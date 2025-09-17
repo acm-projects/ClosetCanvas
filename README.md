@@ -153,7 +153,7 @@ Snap quick photos of everything in your closet and let the app do the rest. Clos
 **Developers**
 - Tramanh Trinh
 - Arnav Vedula
-- Shaleen Amal
+- Shaleen Amal - The Spectacular
 - Pragya Singh
 
 **Project Manager**
