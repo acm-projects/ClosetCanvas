@@ -151,7 +151,7 @@ Snap quick photos of everything in your closet and let the app do the rest. Clos
 ## Team ClosetCanvas 🙌
 
 **Developers**
-- Tramanh Trinh
+- Tramanh Trinh - so cool
 - Arnav Vedula
 - Shaleen Amal
 - Pragya Singh
