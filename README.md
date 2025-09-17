@@ -153,8 +153,9 @@ Snap quick photos of everything in your closet and let the app do the rest. Clos
 **Developers**
 - Tramanh Trinh - so cool
 - Arnav Vedula
-- Shaleen Amal
+- Shaleen Amal - The Spectacular
 - Pragya Singh - the amazing
+
 
 **Project Manager**
 - Noel Emmanuel - The great
