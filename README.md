@@ -157,7 +157,7 @@ Snap quick photos of everything in your closet and let the app do the rest. Clos
 - Pragya Singh
 
 **Project Manager**
-- Noel Emmanuel 
+- Noel Emmanuel - The great
 
 **Industry Mentor**
 - Umaymah
