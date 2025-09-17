@@ -151,13 +151,13 @@ Snap quick photos of everything in your closet and let the app do the rest. Clos
 ## Team ClosetCanvas 🙌
 
 **Developers**
-- Tramanh Trinh
-- Arnav Vedula   
+- Tramanh Trinh - so cool
+- Arnav Vedula
 - Shaleen Amal
 - Pragya Singh - the amazing
 
 **Project Manager**
-- Noel Emmanuel 
+- Noel Emmanuel - The great
 
 **Industry Mentor**
 - Umaymah
