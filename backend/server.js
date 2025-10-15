@@ -1,4 +1,6 @@
 
+
+/*
 import express from 'express';
 import cors from 'cors';
 import { generateUploadURL } from './s3.js';
@@ -42,3 +44,4 @@ app.get('/s3Url', async (req, res) => {
 
 // Start server
 app.listen(8080, () => console.log('Server listening on http://localhost:8080'));
+*/

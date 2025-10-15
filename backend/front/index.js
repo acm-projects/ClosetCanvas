@@ -3,32 +3,35 @@ const imageForm = document.querySelector("#imageForm")
 const imageInput = document.querySelector("#imageInput")
 
 imageForm.addEventListener("submit", async event => {
+  
   event.preventDefault()
   const file = imageInput.files[0]
-  if (!file) return alert("Please select a file first!")
+  if (!file) return alert("Please select a file")
 
-  // get secure url from our server
-  const { url } = await fetch(
-  `http://localhost:8080/s3Url?filename=${encodeURIComponent(file.name)}&filetype=${encodeURIComponent(file.type)}`
-).then(res => res.json());
+   try {
+    // ask lambda for a presigned URL
+    const response = await fetch(
+      `https://1ag2u91ezb.execute-api.us-east-2.amazonaws.com/production/s3?filename=${encodeURIComponent(file.name)}&filetype=${encodeURIComponent(file.type)}`
+    );
 
-  
-    console.log("Upload URL:", url)
+    if (!response.ok) throw new Error("Failed to get upload URL.");
 
-  // post the image direclty to the s3 bucket
-  await fetch(url, {
-    method: "PUT",
-    headers: { "Content-Type": file.type },
-    body: file
-  })
+    const { uploadURL } = await response.json();
 
-  const imageUrl = url.split('?')[0]
-  console.log("Uploaded image URL:", imageUrl)
+    // Step 2️⃣: Upload the file directly to S3 using the signed URL
+    const upload = await fetch(uploadURL, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
 
-  // post request to my server to store any extra data
-  
-  
-  const img = document.createElement("img")
-  img.src = imageUrl
-  document.body.appendChild(img)
-})
+    if (!upload.ok) throw new Error("Failed to upload file to S3.");
+
+    // success
+    console.log("File URL:", uploadURL.split("?")[0]); // final public file URL
+
+  } catch (err) {
+    console.error("Upload error:", err);
+  }
+
+});
