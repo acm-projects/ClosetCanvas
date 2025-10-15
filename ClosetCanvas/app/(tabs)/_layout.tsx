@@ -1,10 +1,8 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Tabs } from "expo-router";
+import React from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native"; // ✅ Added Image import
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -12,24 +10,90 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
+        tabBarStyle: {
+          backgroundColor: "#5B2C9D", // make the whole thing purple
+          borderTopWidth: 0,
+          height: 90,
+        },
+        tabBarActiveTintColor: "#fff",
+        tabBarInactiveTintColor: "#ddd",
+      }}
+      tabBar={(props) => (
+        <View style={styles.mergedBar}>
+          {/* --- custom icons + labels in one purple bar --- */}
+          <View style={styles.iconRow}>
+            {[
+              { label: "Wardrobe", icon: require("../../assets/images/wardrobe.png"), route: "ClosetPage" },
+              { label: "Community", icon: require("../../assets/images/community.png"), route: "CommunityPage" },
+              { label: "Home", icon: require("../../assets/images/home.png"), route: "HomePage" },
+              { label: "Planner", icon: require("../../assets/images/calendar.png"), route: "CalendarPage" }, // ✅ fixed spelling
+              { label: "Analytics", icon: require("../../assets/images/analytics.png"), route: "AnalyticsPage" },
+            ].map((tab, index) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => props.navigation.navigate(tab.route)}
+                style={styles.tabButton}
+              >
+                <Image
+                  source={tab.icon}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    resizeMode: "contain",
+                    tintColor:
+                      props.state.routeNames[props.state.index] === tab.route
+                        ? "#FFD700" // active = gold
+                        : "#FFFFFF", // inactive = white
+                  }}
+                />
+                <Text
+                  style={[
+                    styles.label,
+                    {
+                      color:
+                        props.state.routeNames[props.state.index] === tab.route
+                          ? "#FFD700"
+                          : "#FFFFFF",
+                    },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+    >
+      <Tabs.Screen name="HomePage" options={{ title: "Home" }} />
+      <Tabs.Screen name="ClosetPage" options={{ title: "Closet" }} />
+      <Tabs.Screen name="CommunityPage" options={{ title: "Community" }} />
+      <Tabs.Screen name="CalendarPage" options={{ title: "Planner" }} />
+      <Tabs.Screen name="AnalyticsPage" options={{ title: "Analytics" }} />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  mergedBar: {
+    backgroundColor: "#5B2C9D",
+    paddingTop: 8,
+    paddingBottom: 18,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  iconRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+  },
+  tabButton: {
+    alignItems: "center",
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+});
