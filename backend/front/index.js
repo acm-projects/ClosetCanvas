@@ -1,6 +1,6 @@
-
-const imageForm = document.querySelector("#imageForm")
-const imageInput = document.querySelector("#imageInput")
+const imageForm = document.querySelector("#imageForm");
+const imageInput = document.querySelector("#imageInput");
+const imageURLInput = document.querySelector("#imageURL");
 
 imageForm.addEventListener("submit", async event => {
   
@@ -18,7 +18,7 @@ imageForm.addEventListener("submit", async event => {
 
     const { uploadURL } = await response.json();
 
-    // Step 2️⃣: Upload the file directly to S3 using the signed URL
+    // upload the file directly to S3 using the signed URL
     const upload = await fetch(uploadURL, {
       method: "PUT",
       headers: { "Content-Type": file.type },
@@ -35,3 +35,5 @@ imageForm.addEventListener("submit", async event => {
   }
 
 });
+
+
