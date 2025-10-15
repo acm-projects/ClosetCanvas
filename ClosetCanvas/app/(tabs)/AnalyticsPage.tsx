@@ -3,6 +3,7 @@ import {View, Text, StyleSheet, Image, TouchableOpacity, ScrollView,} from "reac
 import { Ionicons, Entypo, MaterialCommunityIcons } from "@expo/vector-icons";
 import { PieChart } from "react-native-chart-kit";
 import { Dimensions } from "react-native";
+import { Link } from 'expo-router';
 
 export default function AnalyticsPage() {
   const screenWidth = Dimensions.get("window").width;
@@ -39,7 +40,9 @@ export default function AnalyticsPage() {
       View,
       { style: styles.header },
       React.createElement(Text, { style: styles.title }, "ClosetCanvas"),
-      React.createElement(Entypo, { name: "menu", size: 28, color: "white" })
+       <Link href="/SettingsPage">
+          <Entypo name="menu" size={28} color="white" />
+        </Link>
     ),
 
     // Analytics Title

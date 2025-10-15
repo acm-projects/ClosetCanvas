@@ -3,9 +3,10 @@ import React, { useState } from "react";
 import { View, Text, TextInput,Button, StyleSheet, Alert, Image, TouchableOpacity, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, Entypo, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Link } from 'expo-router';
 //import { SafeAreaView } from "react-native-safe-area-context/lib/typescript/src/SafeAreaView";
 
-export default function CalendarPage() {
+export default function ClosetPage() {
   
    
   return (
@@ -15,15 +16,20 @@ export default function CalendarPage() {
        
        <View style={styles.header}>
               <Text style={styles.title0}>ClosetCanvas</Text>
-              <Entypo name="menu" size={28} color="white" />
+               <Link href="/SettingsPage">
+                <Entypo name="menu" size={28} color="white" />
+               </Link>
             </View>
       
         <View style={styles.headerRow}>
       <Image source={require("../../assets/images/wardrobeTitle.png")}
-        style={{ width: 60, height: 50 }} />
+        style={styles.wardrobeIcon} />
+        <View>
       <Text style={styles.title}>Wardrobe</Text>
+      <Text style={styles.subtitle}>Filters:</Text>
       </View>
-
+      </View>
+    
 
          <View style={[styles.block, { backgroundColor: "#E9D8FD" }]}>
         
@@ -66,18 +72,34 @@ const styles = StyleSheet.create({
     flexDirection: "row", // <-- makes icon + title side by side
     alignItems: "center",
     marginBottom: 20,
+    paddingLeft: 10,
   },
   icon: {
     width: 50,
     height: 50,
     marginRight: 10,
   },
+   wardrobeIcon: { 
+    width: 60,
+    height: 50,
+    marginTop: -15, 
+    marginRight: 5, 
+   }, 
   title: {
     fontSize: 46,
     fontWeight: "400",
+    marginTop: 5,
     color: "#4B0082",
-    justifyContent: "center",
-    alignItems: "center",
+   
+   
+  },
+  subtitle: {
+    fontSize: 20,
+    fontWeight: "300",
+    marginTop: -5,
+    marginLeft: -65,
+    color: "#4B0082",
+  
   },
   selectedText: {
     fontSize: 16,

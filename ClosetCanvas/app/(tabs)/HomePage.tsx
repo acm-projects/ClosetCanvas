@@ -1,13 +1,16 @@
 import React from "react";
 import {View, Text, StyleSheet, Image, TouchableOpacity, ScrollView,} from "react-native";
 import { Ionicons, MaterialCommunityIcons, Entypo } from "@expo/vector-icons";
+import { Link } from 'expo-router';
 export default function HomePage() {
   return (
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>ClosetCanvas</Text>
-        <Entypo name="menu" size={28} color="#FAFAFA" />
+        <Link href="/SettingsPage">
+          <Entypo name="menu" size={28} color="white" />
+        </Link>
       </View>
 
       {/* Weather Section */}
@@ -53,7 +56,9 @@ export default function HomePage() {
 
       {/* Love this outfit button */}
       <TouchableOpacity style={styles.loveButton}>
+        <Link href="/ClosetPage"> 
         <Text style={styles.loveButtonText}>Love this outfit!</Text>
+        </Link>
       </TouchableOpacity>
     
     </ScrollView>

@@ -6,6 +6,7 @@ import { Calendar } from "react-native-calendars";
 import { Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, Entypo, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Link } from 'expo-router';
 //import { SafeAreaView } from "react-native-safe-area-context/lib/typescript/src/SafeAreaView";
 
 export default function CalendarPage() {
@@ -18,7 +19,9 @@ export default function CalendarPage() {
        
        <View style={styles.header}>
               <Text style={styles.title0}>ClosetCanvas</Text>
-              <Entypo name="menu" size={28} color="white" />
+              <Link href="/SettingsPage">
+                <Entypo name="menu" size={28} color="white" />
+              </Link>
             </View>
       
         <View style={styles.headerRow}>
