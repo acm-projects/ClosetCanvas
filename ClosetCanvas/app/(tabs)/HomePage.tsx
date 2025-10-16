@@ -18,7 +18,7 @@ export default function HomePage() {
         <Ionicons name="sunny-outline" size={40} color="#F7B91C" />
         <View>
           <Text style={styles.weatherText}>Sunny</Text>
-          <Text style={styles.weatherSub}>72Â° - Perfect weather</Text>
+          <Text style={styles.weatherSub}>72° - Perfect weather</Text>
         </View>
       </View>
 
@@ -55,10 +55,11 @@ export default function HomePage() {
       </View>
 
       {/* Love this outfit button */}
+      
       <TouchableOpacity style={styles.loveButton}>
-        <Link href="/ClosetPage"> 
+         <Link href="/ClosetPage"> 
         <Text style={styles.loveButtonText}>Love this outfit!</Text>
-        </Link>
+         </Link>
       </TouchableOpacity>
     
     </ScrollView>

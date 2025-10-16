@@ -26,7 +26,7 @@ export default function AnalyticsPage() {
     {
       name: "Active Wear",
       population: 30,
-      color: "#A9E5BB",
+      color: "#D1EFDA",
       legendFontColor: "#380065",
       legendFontSize: 12,
     },
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   },
 
   infoBoxGreen: {
-    backgroundColor: "#A9E5BB",
+    backgroundColor: "#D1EFDA",
     borderRadius: 10,
     padding: 15,
     marginHorizontal: 25,
