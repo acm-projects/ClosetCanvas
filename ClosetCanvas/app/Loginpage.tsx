@@ -25,13 +25,13 @@ export default function LoginScreen() {
       type: "success",
       text1: "Logging In!",
       text2: "Redirecting to Home...",
-      visibilityTime: 2000,
+      visibilityTime: 1000,
     });
 
     // Navigate after 2 seconds
     setTimeout(() => {
       router.push("/(tabs)/HomePage");
-    }, 2000);
+    }, 1000);
   };
 
   return (
