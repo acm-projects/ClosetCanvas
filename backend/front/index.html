@@ -1,3 +1,4 @@
+<!--
 <!DOCTYPE html>
 <html>
 <head>
@@ -10,7 +11,28 @@
     <button type="submit">Upload</button>
   </form>
 
-
   <script src="index.js"></script>
 </body>
+</html>
+-->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>S3 Upload Test</title>
+  </head>
+  <body>
+    <form id="imageForm">
+      <label>Select file:</label>
+      <input type="file" id="imageInput" accept="image/*" /><br /><br />
+
+      <label>Or paste image URL:</label>
+      <input type="text" id="imageURL" placeholder="https://example.com/image.jpg" style="width: 300px;" /><br /><br />
+
+      <button type="submit">Upload</button>
+    </form>
+
+    <script src="index.js"></script>
+  </body>
 </html>
