@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Image,
   Platform,
+  ScrollView,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
@@ -23,7 +25,7 @@ export default function SignupScreen() {
   const [confirmationCode, setConfirmationCode] = useState("");
   const router = useRouter();
 
-  const [date, setDate] = useState(new Date());
+  const [date, setDate] = useState<Date | null>(null);
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
   const showDatePicker = () => {
@@ -149,134 +151,124 @@ export default function SignupScreen() {
     }
   };
 
-const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*])(?=.{8,})/;
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*])(?=.{8,})/;
 
-const handleSignup = async () => {
+  const handleSignup = async () => {
     setIsLoading(true);
 
     if (
-        !name ||
-        !phoneNumber ||
-        !email ||
-        !password ||
-        !secondpassword ||
-        !date
+      !name ||
+      !phoneNumber ||
+      !email ||
+      !password ||
+      !secondpassword ||
+      !date
     ) {
-        Toast.show({
-            type: "error",
-            text1: "Missing Information",
-            text2: "Please fill out all fields.",
-        });
-        setIsLoading(false);
-        return;
+      Toast.show({
+        type: "error",
+        text1: "Missing Information",
+        text2: "Please fill out all fields.",
+      });
+      setIsLoading(false);
+      return;
     }
 
     if (password !== secondpassword) {
-        Toast.show({
-            type: "error",
-            text1: "Passwords do not match",
-            text2: "Please make sure both passwords are identical.",
-        });
-        setIsLoading(false);
-        return;
+      Toast.show({
+        type: "error",
+        text1: "Passwords do not match",
+        text2: "Please make sure both passwords are identical.",
+      });
+      setIsLoading(false);
+      return;
     }
-
 
     if (!passwordRegex.test(password)) {
-        Toast.show({
-            type: "error",
-            text1: "Weak Password",
-            text2: "Password must be at least 8 characters long and include: uppercase, lowercase, numbers, and special characters.",
-        });
-        setIsLoading(false);
-        return;
+      Toast.show({
+        type: "error",
+        text1: "Weak Password",
+        text2:
+          "Password must be at least 8 characters long and include: uppercase, lowercase, numbers, and special characters.",
+      });
+      setIsLoading(false);
+      return;
     }
 
-
     try {
-        const response = await fetch(
-            "https://iz9xyq1j9d.execute-api.us-east-2.amazonaws.com/default/UserCreation",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    username: email,
-                    password: password,
-                    name: name,
-                    phoneNumber: "+1" + phoneNumber,
-                    birthdate: formatDate(date),
-                }),
-            }
-        );
+      const response = await fetch(
+        "https://iz9xyq1j9d.execute-api.us-east-2.amazonaws.com/default/UserCreation",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: email,
+            password: password,
+            name: name,
+            phoneNumber: "+1" + phoneNumber,
+            birthdate: formatDate(date),
+          }),
+        }
+      );
 
-        const responseData = await response.json();
+      const responseData = await response.json();
 
-        console.log("Response Status:", response.status); 
-        console.log("Response Data:", responseData);
+      console.log("Response Status:", response.status);
+      console.log("Response Data:", responseData);
 
-        if (!response.ok) {
-            let errorMessage = "An unexpected error occurred.";
+      if (!response.ok) {
+        let errorMessage = "An unexpected error occurred.";
 
-            if (responseData["body"]) {
-                try {
-                    const bodyObject = JSON.parse(responseData["body"]);
-                    errorMessage = bodyObject.message || errorMessage;
-                } catch (error) {
-                    errorMessage = responseData["body"];
-                }
-            } else if (responseData.message) {
-                 errorMessage = responseData.message;
-            } else {
-                 errorMessage = `HTTP error! status: ${response.status}`;
-            }
-
-            Toast.show({
-                type: "error",
-                text1: "Sign Up Failed",
-                text2: errorMessage,
-            });
-
-            throw new Error(`Error during sign up: ${errorMessage}`);
+        if (responseData["body"]) {
+          try {
+            const bodyObject = JSON.parse(responseData["body"]);
+            errorMessage = bodyObject.message || errorMessage;
+          } catch (error) {
+            errorMessage = responseData["body"];
+          }
+        } else if (responseData.message) {
+          errorMessage = responseData.message;
+        } else {
+          errorMessage = `HTTP error! status: ${response.status}`;
         }
 
         Toast.show({
-            type: "success",
-            text1: "Success!",
-            text2: "Your account has been created.",
+          type: "error",
+          text1: "Sign Up Failed",
+          text2: errorMessage,
         });
 
-      // Toast.show({
-      //   type: "success",
-      //   text1: "Account Created!",
-      //   text2: responseData?.message || "Welcome to ClosetCanvas!",
-      // });
+        throw new Error(`Error during sign up: ${errorMessage}`);
+      }
 
-      // setTimeout(() => {
-      //   router.push("/Loginpage");
-      // }, 2000);
+      Toast.show({
+        type: "success",
+        text1: "Success!",
+        text2: "Your account has been created.",
+      });
+
       setAtConfirmation(true);
     } catch (error) {
       console.error("Error during sign up:", error);
-      Toast.show({
-        type: "error",
-        text1: "Sign Up Failed",
-
-        text2:
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred.",
-      });
+      // The toast for sign up failure is already handled above where we have more context.
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <>
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingContainer}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       {!atConfirmation ? (
-        <View style={styles.container}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+          keyboardShouldPersistTaps="handled"
+        >
           <Image
             source={require("../assets/images/logo.png")}
             style={{ width: 150, height: 150, marginBottom: 10 }}
@@ -362,9 +354,13 @@ const handleSignup = async () => {
             maximumDate={new Date()}
           />
           <Toast />
-        </View>
+        </ScrollView>
       ) : (
-        <View style={styles.container}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+          keyboardShouldPersistTaps="handled"
+        >
           <Image
             source={require("../assets/images/logo.png")}
             style={{ width: 150, height: 150, marginBottom: 10 }}
@@ -391,18 +387,24 @@ const handleSignup = async () => {
           <TouchableOpacity onPress={resendConfirmationCode}>
             <Text style={styles.link}>Resend Code</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       )}
-    </>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingContainer: {
+    flex: 1,
+  },
   container: {
     flex: 1,
+    backgroundColor: "#FAFAFA",
+  },
+  contentContainer: {
+    flexGrow: 1, 
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#FAFAFA",
     padding: 20,
   },
   signupContainer: {
@@ -466,3 +468,4 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 });
+

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Switch, TouchableOpacity, SafeAreaView,Image } 
 import { Link } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons, Entypo } from "@expo/vector-icons";
 import { useRouter } from 'expo-router';
-
+import { removeCredentials } from '../util/auth.js';
 
 type SettingsRowProps = {
   label: string;
@@ -34,6 +34,12 @@ export default function SettingsPage() {
     console.log({ darkMode, notifications, modesty });
     alert('Settings saved');
   }
+
+  const handleLogout = async () => {
+    await removeCredentials();
+    router.replace('/Loginpage');
+    console.log('User logged out, credentials removed.');
+  };
 
   return (
     // safeareaview is deprecated we need to change that for next update
@@ -85,6 +91,11 @@ export default function SettingsPage() {
          <Link href="/(tabs)/HomePage">
           <Text style={styles.buttonText}>Save</Text>
           </Link>
+        </TouchableOpacity>
+
+        
+        <TouchableOpacity onPress={handleLogout} style={styles.button}>
+          <Text style={styles.buttonText}>Logout</Text>
         </TouchableOpacity>
     </SafeAreaView>
   );
