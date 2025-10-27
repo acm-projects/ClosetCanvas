@@ -10,17 +10,20 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  // Platform, // <-- Removed
 } from "react-native";
 import { Ionicons, Entypo } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { getCredentials } from "../../util/auth"; // Corrected path
+import { getCredentials } from "../../util/auth";
 
-// --- API & User Configuration ---
+// --- REMOVED: Background removal and file system libraries ---
+
+// API & User Configuration
 const API_ENDPOINT =
   "https://1ag2u91ezb.execute-api.us-east-2.amazonaws.com/production/s3";
 
-// Hardcoded outfits, as requested
+// Hardcoded outfits
 const outfits = [
   {
     id: 1,
@@ -66,6 +69,8 @@ export default function ClosetPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userToken, setUserToken] = useState<string | null>(null);
 
+  // --- REMOVED: isNativeRemoval state ---
+
   function toggleLike(outfitId: number) {
     if (likedOutfits.includes(outfitId)) {
       setLikedOutfits(likedOutfits.filter((id) => id !== outfitId));
@@ -79,32 +84,32 @@ export default function ClosetPage() {
     const loadUserData = async () => {
       const creds = await getCredentials();
       if (creds) {
-        // --- THIS IS THE CRITICAL FIX ---
-        // We are swapping them here to match what was saved
         setUserId(creds.accessToken); // This is actually the UUID
         setUserToken(creds.uuid); // This is actually the Access Token
-        // --- END FIX ---
       } else {
         console.warn("No credentials found. User is not logged in.");
       }
     };
+
+    // --- REMOVED: checkBgRemovalSupport() ---
+
     loadUserData();
   }, []); // Runs once on mount
 
   // --- Image Upload (POST) ---
-
   const uploadImage = async (base64Image: string, mimeType: string) => {
+    // --- MOVED: Loading state is now handled here ---
     setModalVisible(false);
     setIsLoading(true);
 
     if (!userId || !userToken) {
       Alert.alert("Error", "You are not logged in. Please restart the app.");
-      setIsLoading(false);
+      setIsLoading(false); // Make sure to stop loading on error
       return;
     }
 
     const body = {
-      user_id: userId, // This is now the correct UUID
+      user_id: userId,
       image: base64Image,
       filetype: mimeType || "image/jpeg",
     };
@@ -114,7 +119,7 @@ export default function ClosetPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: userToken, // This is now the correct Access Token
+          Authorization: userToken,
         },
         body: JSON.stringify(body),
       });
@@ -136,9 +141,11 @@ export default function ClosetPage() {
         error instanceof Error ? error.message : "Could not upload image."
       );
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // This stops the spinner after upload is done
     }
   };
+
+  // --- REMOVED: handleImageProcessingAndUpload function ---
 
   /**
    * Opens the Image Library to pick an image.
@@ -152,7 +159,7 @@ export default function ClosetPage() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use correct enum
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Kept fix
       allowsEditing: true,
       aspect: [4, 4],
       quality: 0.8,
@@ -162,6 +169,7 @@ export default function ClosetPage() {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
       if (asset.base64 && asset.mimeType) {
+        // --- UPDATED: Call uploadImage directly ---
         await uploadImage(asset.base64, asset.mimeType);
       }
     }
@@ -187,6 +195,7 @@ export default function ClosetPage() {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
       if (asset.base64 && asset.mimeType) {
+        // --- UPDATED: Call uploadImage directly ---
         await uploadImage(asset.base64, asset.mimeType);
       }
     }
@@ -295,7 +304,7 @@ export default function ClosetPage() {
   );
 }
 
-// STYLES (Unchanged)
+// STYLES
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -356,7 +365,7 @@ const styles = StyleSheet.create({
   },
   itemImage: {
     width: 120,
-    height: 100, // Back to original
+    height: 100,
     resizeMode: "cover",
     marginBottom: 5,
   },
@@ -388,7 +397,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     paddingTop: 20,
     paddingHorizontal: 20,
-    paddingBottom: 0, // Adjusted padding
+    paddingBottom: 0,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
@@ -409,7 +418,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     width: "100%",
-    marginBottom: 10, // Adjusted margin
+    marginBottom: 10,
   },
   modalButtonText: {
     color: "#4B0082",
@@ -421,19 +430,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#D1EFDA",
     justifyContent: "center",
     width: "50%",
-    marginBottom: 20, // Add bottom margin for safe area
+    marginBottom: 20,
   },
   cancelButtonText: {
     color: "#4B0082",
     marginLeft: 0,
-    textAlign: "center", // Center cancel text
+    textAlign: "center",
   },
   // --- Loading Modal Styles ---
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.4)", // Darker overlay
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
   },
   loadingText: {
     color: "white",
@@ -441,7 +450,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  // (Add any other styles you had)
   outfitRow: {
     flex: 1,
     justifyContent: "center",
