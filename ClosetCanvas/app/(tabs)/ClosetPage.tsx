@@ -23,6 +23,9 @@ import { getCredentials } from "../../util/auth";
 const API_ENDPOINT =
   "https://1ag2u91ezb.execute-api.us-east-2.amazonaws.com/production/s3";
 
+// API for BG Removal
+const BG_REMOVAL_API = "naKg4ajdwqqBrZQo4ooyQ61P";
+
 // Hardcoded outfits
 const outfits = [
   {
@@ -91,13 +94,15 @@ export default function ClosetPage() {
       }
     };
 
-    // --- REMOVED: checkBgRemovalSupport() ---
+    
+
+
 
     loadUserData();
   }, []); // Runs once on mount
 
   // --- Image Upload (POST) ---
-  const uploadImage = async (base64Image: string, mimeType: string) => {
+    const uploadImage = async (base64Image: string, mimeType: string, imageUri: string | undefined) => {
     // --- MOVED: Loading state is now handled here ---
     setModalVisible(false);
     setIsLoading(true);
@@ -108,42 +113,72 @@ export default function ClosetPage() {
       return;
     }
 
-    const body = {
-      user_id: userId,
-      image: base64Image,
-      filetype: mimeType || "image/jpeg",
-    };
+    
 
     try {
-      const response = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: userToken,
-        },
-        body: JSON.stringify(body),
-      });
+// 1 Send image to background removal API (demo.api4ai.cloud)
+     const formData = new FormData();
+    formData.append("image_file", {
+      uri: `data:${mimeType};base64,${base64Image}`,
+      name: "upload.jpg",
+      type: mimeType,
+    });
 
-      const responseData = await response.json();
+    const bgResponse = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: { "X-Api-Key": BG_REMOVAL_API },
+    body: formData,
+  });
 
-      if (!response.ok) {
-        throw new Error(
-          responseData.message ||
-            "Upload failed with status: " + response.status
-        );
-      }
+    const arrayBuffer = await bgResponse.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+}
+const bgRemovedBase64 = btoa(binary);
 
-      Alert.alert("Success!", "Your item has been added.");
-    } catch (error) {
-      console.error("Upload error:", error);
-      Alert.alert(
-        "Upload Failed",
-        error instanceof Error ? error.message : "Could not upload image."
-      );
-    } finally {
-      setIsLoading(false); // This stops the spinner after upload is done
+    if (!bgRemovedBase64) {
+      throw new Error("No background-removed image returned");
     }
-  };
+
+
+    // 2 Upload the background-removed image to your S3 API
+    const body = {
+      user_id: userId,
+      image: bgRemovedBase64,
+      filetype: "png",
+    };
+
+    const response = await fetch(API_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: userToken,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        responseData.message ||
+          "Upload failed with status: " + response.status
+      );
+    }
+
+    Alert.alert("Successful Upload");
+  } catch (error) {
+    console.error("Upload error:", error);
+    Alert.alert(
+      "Upload Failed",
+      error instanceof Error ? error.message : "Could not upload image."
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // --- REMOVED: handleImageProcessingAndUpload function ---
 

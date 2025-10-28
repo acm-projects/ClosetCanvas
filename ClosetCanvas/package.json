@@ -11,6 +11,13 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/client-rekognition": "^3.0.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "sharp": "^0.32.0",
+    "ml-kmeans": "^8.0.0",
+    "form-data": "^4.0.0",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/bottom-tabs": "^7.4.0",
