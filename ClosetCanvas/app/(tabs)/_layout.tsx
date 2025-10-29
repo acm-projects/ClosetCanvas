@@ -4,6 +4,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native"; 
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
+
+
 export default function TabLayout() {
   const colorScheme = useColorScheme();
 
@@ -12,7 +14,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#5B2C9D", // make the whole thing purple
+          backgroundColor: "#714054", // make the whole thing purple
           borderTopWidth: 0,
           height: 90,
         },
@@ -38,8 +40,8 @@ export default function TabLayout() {
                 <Image
                   source={tab.icon}
                   style={{
-                    width: 24,
-                    height: 24,
+                    width: 30,
+                    height: 25,
                     resizeMode: "contain",
                     tintColor:
                       props.state.routeNames[props.state.index] === tab.route
@@ -77,11 +79,9 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   mergedBar: {
-    backgroundColor: "#5B2C9D",
+    backgroundColor: "#714054",
     paddingTop: 8,
     paddingBottom: 18,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
   },
   iconRow: {
     flexDirection: "row",

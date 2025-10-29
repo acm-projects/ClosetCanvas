@@ -1,19 +1,35 @@
 import React, { useState } from "react";
-import { View, Text, TextInput,Button, StyleSheet, Alert, Image, TouchableOpacity } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  StyleSheet,
+  Pressable,
+  Alert,
+  Image,
+  TouchableOpacity,
+} from "react-native";
 import { Link, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
+import Checkbox from "expo-checkbox";
+import { Feather } from "@expo/vector-icons";
 
-
-export default function LoginScreen() {
+export default function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [secondpassword, setsecondpassword] = useState("");
+  const [secondPassword, setSecondPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
+    useState(false);
+
   const router = useRouter();
 
-  const handleLogin = () => {
-if (!name || !phoneNumber || !email || !password || !secondpassword) {
+  const handleSignUp = () => {
+    if (!name || !phoneNumber || !email || !password || !secondPassword) {
       Toast.show({
         type: "error",
         text1: "Missing Information",
@@ -23,7 +39,7 @@ if (!name || !phoneNumber || !email || !password || !secondpassword) {
       return;
     }
 
-    if (password !== secondpassword) {
+    if (password !== secondPassword) {
       Toast.show({
         type: "error",
         text1: "Passwords do not match",
@@ -32,8 +48,8 @@ if (!name || !phoneNumber || !email || !password || !secondpassword) {
       });
       return;
     }
-  // Continue authentication (fake check for now)
-   Toast.show({
+    // Continue authentication (fake check for now)
+    Toast.show({
       type: "success",
       text1: "Account Created!",
       text2: "Redirecting to Home...",
@@ -42,148 +58,209 @@ if (!name || !phoneNumber || !email || !password || !secondpassword) {
 
     // Navigate after 2 seconds
     setTimeout(() => {
-      router.push("/(tabs)/HomePage");
+      router.push("/QuestionarePage");
     }, 1000);
   };
 
   return (
     <View style={styles.container}>
-
-
-
-     <Image
-      source={require("../assets/images/logo.png")}
-      style={{ width: 150, height: 150 }}
+      <Image
+        source={require("../assets/images/TransBG.png")}
+        style={{ width: 150, height: 150 }}
       />
-
 
       <Text style={styles.title}>Sign Up</Text>
 
+      <View style={styles.inputContainer}>
+        <Feather name="user" size={20} color="#555" style={styles.icon} />
+        <TextInput
+          style={styles.input}
+          placeholder="Name"
+          value={name}
+          onChangeText={(text) => setName(text)}
+        />
+      </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Name"
-        value={name}
-        onChangeText={(text) => setName(text)}
-      />
+      <View style={styles.inputContainer}>
+        <Feather name="phone" size={20} color="#555" style={styles.icon} />
+        <TextInput
+          style={styles.input}
+          placeholder="Phone Number"
+          value={phoneNumber}
+          onChangeText={(text) => setPhoneNumber(text)}
+          keyboardType="phone-pad"
+        />
+      </View>
 
+      <View style={styles.inputContainer}>
+        <Feather name="mail" size={20} color="#555" style={styles.icon} />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={(text) => setEmail(text)}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+      </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Phone Number"
-        value={phoneNumber}
-        onChangeText={(text) => setPhoneNumber(text)}
-      />
+      <View style={styles.inputContainer}>
+        <Feather name="lock" size={20} color="#555" style={styles.icon} />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          secureTextEntry={!isPasswordVisible}
+          value={password}
+          onChangeText={(text) => setPassword(text)}
+        />
+        <Pressable onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
+          <Feather
+            name={isPasswordVisible ? "eye" : "eye-off"}
+            size={20}
+            color="#555"
+          />
+        </Pressable>
+      </View>
+      <View style={styles.inputContainer}>
+        <Feather name="lock" size={20} color="#555" style={styles.icon} />
+        <TextInput
+          style={styles.input}
+          placeholder="Confirm Password"
+          secureTextEntry={!isConfirmPasswordVisible}
+          value={secondPassword}
+          onChangeText={(text) => setSecondPassword(text)}
+        />
+        <Pressable
+          onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}
+        >
+          <Feather
+            name={isConfirmPasswordVisible ? "eye" : "eye-off"}
+            size={20}
+            color="#555"
+          />
+        </Pressable>
+      </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={(text) => setEmail(text)}
-      />
+      <View style={styles.optionsContainer}>
+        <View style={styles.rememberMeContainer}>
+          <Checkbox
+            style={styles.checkbox}
+            value={rememberMe}
+            onValueChange={setRememberMe}
+            color={rememberMe ? "#714054" : undefined}
+          />
+          <Text style={styles.rememberMeText}>Remember Me</Text>
+        </View>
+        <TouchableOpacity>
+          <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+        </TouchableOpacity>
+      </View>
 
-   <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={(text) => setPassword(text)}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm Password"
-        secureTextEntry
-        value={secondpassword}
-        onChangeText={(text) => setsecondpassword(text)}
-      />
-
-      <TouchableOpacity style = {styles.button} onPress={handleLogin}>
-        <Text style = {styles.buttonText}>Submit</Text>
-        <Link href="/Loginpage" asChild> </Link>
+      <TouchableOpacity style={styles.button} onPress={handleSignUp}>
+        <Text style={styles.buttonText}>SUBMIT</Text>
       </TouchableOpacity>
-            
 
-       <View style={styles.signupContainer}>
+      {/* --- Login Link --- */}
+      <View style={styles.loginContainer}>
         <Text style={styles.text}>Already have an account?</Text>
         <Link href="/Loginpage" asChild>
-          <TouchableOpacity style={styles.button2}>
-            <Text style={styles.buttonText2}>Login</Text>
+          <TouchableOpacity>
+            <Text style={styles.buttonText2}>Log in</Text>
           </TouchableOpacity>
         </Link>
       </View>
-
-
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#FAFAFA",
+    backgroundColor: "#E5D7D7", // Changed background color
     padding: 20,
   },
-  signupContainer: {
-  flexDirection: "row",      // side by side
-  alignItems: "center",      // vertically center
-  marginTop: .01,             // spacing from other elements
-},
-
-text: {
-  fontSize: 14,
-  marginRight: 10,           // space between text and button
-},
- button2:{
-    width: "15%",
-    backgroundColor: "#DACCF4",
-    padding: 5,
-    borderRadius: 10,
+  loginContainer: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 3,
+    marginTop: 15,
+  },
+  text: {
+    fontSize: 14,
+    marginRight: 10,
   },
   buttonText2: {
-    color: "#000000ff",
-    fontSize:10 ,
-    fontWeight:"bold",
+    color: "#3C2332",
+    fontSize: 13,
+    fontWeight: "bold",
+    borderBottomWidth: 2,
+    borderBottomColor: "#3C2332",
+    paddingBottom: 0,
+    lineHeight: 18,
   },
   button: {
     width: "75%",
-    backgroundColor:"#DACCF4",
+    backgroundColor: "#714054", // Changed button color
     padding: 10,
     borderRadius: 10,
     alignItems: "center",
   },
   buttonText: {
-    color: "#000000ff",
-    fontSize:15 ,
-    fontWeight:"bold",
-  },
-  logo: {
-    width: 200,
-    height: 200,
-    marginBottom: 20,
+    color: "#FAFAFA", // Changed button text color
+    fontSize: 15,
+    fontWeight: "bold",
   },
   title: {
     fontSize: 28,
     marginBottom: 20,
     fontWeight: "bold",
   },
-  input: {
+  // --- NEW/UPDATED STYLES ---
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     width: "85%",
-    borderWidth: 0,
     borderBottomWidth: 1,
     borderColor: "#000000ff",
-    padding: 10,
+    paddingVertical: 5,
     marginBottom: 15,
     borderRadius: 5,
   },
+  icon: {
+    marginRight: 10,
+    marginLeft: 5,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 5,
+    fontSize: 16,
+    borderWidth: 0,
+  },
+  optionsContainer: {
+    width: "85%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+    marginTop: 5, // Added some margin
+  },
+  rememberMeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  checkbox: {
+    marginRight: 8,
+    width: 18,
+    height: 18,
+  },
+  rememberMeText: {
+    fontSize: 13,
+    color: "#333",
+  },
+  forgotPasswordText: {
+    fontSize: 13,
+    color: "#3C2332",
+    fontWeight: "600",
+  },
 });
-
-
-
-
-
