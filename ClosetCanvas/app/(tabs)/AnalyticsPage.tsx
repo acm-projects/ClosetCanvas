@@ -1,295 +1,329 @@
-import * as React from "react";
-import {View, Text, StyleSheet, Image, TouchableOpacity, ScrollView,} from "react-native";
-import { Ionicons, Entypo, MaterialCommunityIcons } from "@expo/vector-icons";
+import React, { useRef, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+  ImageBackground,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { PieChart } from "react-native-chart-kit";
-import { Dimensions } from "react-native";
-import { Link } from 'expo-router';
+import Carousel from "react-native-reanimated-carousel";
+
+const { width, height } = Dimensions.get("window");
 
 export default function AnalyticsPage() {
   const screenWidth = Dimensions.get("window").width;
 
+  const outfits = [
+    {
+      shirt: require("../../assets/images/WhiteShirt.png"),
+      jeans: require("../../assets/images/BlueJeans.png"),
+      shoes: require("../../assets/images/WhiteShoes.png"),
+    },
+    {
+      shirt: require("../../assets/images/dress.png"),
+      jeans: require("../../assets/images/BlueJeans.png"),
+      shoes: require("../../assets/images/WhiteShoes.png"),
+    },
+    {
+      shirt: require("../../assets/images/plaid.png"),
+      jeans: require("../../assets/images/BlueJeans.png"),
+      shoes: require("../../assets/images/sneakers.png"),
+    },
+  ];
+
+  const carouselRef = useRef<any>(null);
+  const [, setCurrentIndex] = useState(0);
+
+  const goNext = () => {
+    carouselRef.current?.scrollTo({ count: 1, animated: true });
+  };
+
+  const goPrev = () => {
+    carouselRef.current?.scrollTo({ count: -1, animated: true });
+  };
+ 
   const data = [
     {
       name: "Business Wear",
       population: 30,
-      color: "#BA9EEF",
-      legendFontColor: "#380065",
-      legendFontSize: 12,
+      color: "#3C2332",
+      legendFontColor: "#FFFFFF",
+      legendFontSize: 14,
     },
     {
       name: "Casual Wear",
       population: 40,
-      color: "#F9CADA",
-      legendFontColor: "#380065",
-      legendFontSize: 12,
+      color: "#AB8C96",
+      legendFontColor: "#FFFFFF",
+      legendFontSize: 14,
     },
     {
       name: "Active Wear",
       population: 30,
-      color: "#D1EFDA",
-      legendFontColor: "#380065",
-      legendFontSize: 12,
+      color: "#8E6675",
+      legendFontColor: "#FFFFFF",
+      legendFontSize: 14,
     },
   ];
 
-  return React.createElement(
-    ScrollView,
-    { style: styles.container },
-    // Header
-    React.createElement(
-      View,
-      { style: styles.header },
-      React.createElement(Text, { style: styles.title }, "ClosetCanvas"),
-       <Link href="/SettingsPage">
-          <Entypo name="menu" size={28} color="white" />
-        </Link>
-    ),
+  return (
+    <View style={styles.mainContainer}> 
+      {/* 1. Background (Positioned absolutely) */}
+      <ImageBackground
+        source={require("../../assets/images/starbackground.png")} 
+        style={styles.background} 
+        imageStyle={{ resizeMode: "cover" }}
+      />
 
-    // Analytics Title
-    React.createElement(
-      View,
-      { style: styles.analyticsHeader },
-      React.createElement(Ionicons, { name: "stats-chart-outline", size: 28, color: "#380065" }),
-      React.createElement(Text, { style: styles.analyticsTitle }, "Analytics")
-    ),
+      {/* 2. Scrollable Content (Sibling to Background) */}
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Analytics Title */}
+        <View style={styles.analyticsHeader}>
+          <Ionicons name="stats-chart" size={32} color="#FFFFFF" />
+          <Text style={styles.analyticsTitle}>Analytics</Text>
+        </View>
 
-    // RECAP
-    React.createElement(Text, { style: styles.recapText }, "RECAP"),
+        {/* RECAP Section */}
+        <Text style={styles.recapText}>RECAP</Text>
 
-    // Outfit Display
-    React.createElement(
-      View,
-      { style: styles.outfitContainer },
-      React.createElement(View, { style: styles.sideRectangleLeft }),
-      React.createElement(View, { style: styles.sideRectangleRight }),
-      React.createElement(
-        View,
-        { style: styles.outfitCard },
-        React.createElement(Image, { source: require("../../assets/images/WhiteShirt.png"), style: styles.shirt }),
-        React.createElement(Image, { source: require("../../assets/images/BlueJeans.png"), style: styles.jeans }),
-        React.createElement(Image, { source: require("../../assets/images/WhiteShoes.png"), style: styles.shoes })
-      )
-    ),
+        {/* Outfit Carousel */}
+        <View style={styles.carouselWrapper}>
+          <TouchableOpacity style={[styles.sideButton, { left: 10 }]} onPress={goPrev}>
+            <Ionicons name="chevron-back" size={36} color="white" />
+          </TouchableOpacity>
+          <Carousel
+            ref={carouselRef}
+            width={width * 0.75}
+            height={500}
+            loop={true}
+            pagingEnabled={true}
+            snapEnabled={true}
+            autoPlay={false}
+            data={outfits}
+            scrollAnimationDuration={500}
+            onSnapToItem={setCurrentIndex}
+            renderItem={({ item }: any) => (
+              <View style={styles.outfitCard}> 
+                  <Image source={item.shirt} style={styles.shirt} />
+                  <Image source={item.jeans} style={styles.jeans} />
+                  <Image source={item.shoes} style={styles.shoes} />
+                  <TouchableOpacity style={styles.shareIcon}>
+                      <Ionicons name="share-social-outline" size={24} color="#FFFFFF" />
+                  </TouchableOpacity>
+              </View>
+            )}
+          />
+          <TouchableOpacity style={[styles.sideButton, { right: 10 }]} onPress={goNext}>
+            <Ionicons name="chevron-forward" size={36} color="white" />
+          </TouchableOpacity>
+        </View>
+        
+        {/* Category Breakdown */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Category Breakdown</Text>
+          <PieChart
+            data={data}
+            width={screenWidth * 0.9}
+            height={180}
+            chartConfig={{
+              backgroundGradientFrom: 'transparent',
+              backgroundGradientTo: 'transparent',
+              color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+            }}
+            accessor={"population"}
+            backgroundColor={"transparent"}
+            paddingLeft={"15"}
+            center={[10, 0]}
+            absolute
+            hasLegend={true}
+            style={styles.pieChartStyle}
+          />
+        </View>
 
-    // Category Breakdown
-    React.createElement(
-      View,
-      { style: styles.section },
-      React.createElement(Text, { style: styles.sectionTitle }, "Category Breakdown"),
-      React.createElement(PieChart, {
-        data: data,
-        width: screenWidth - 30,
-        height: 180,
-        chartConfig: {
-          color: () => `#4A148C`,
-        },
-        accessor: "population",
-        backgroundColor: "transparent",
-        paddingLeft: "15",
-        absolute: true,
-      })
-    ),
+        {/* Most Worn Item */}
+        <View style={styles.infoBox}>
+          <Text style={styles.infoTitle}>Most Worn Item</Text>
+          <Text style={styles.infoItem}>White Sneakers</Text>
+          <Text style={styles.infoSub}>3x this week</Text>
+        </View>
 
-    // Most Worn Item
-    React.createElement(
-      View,
-      { style: styles.infoBoxGreen },
-      React.createElement(Text, { style: styles.infoTitle }, "Most Worn Item"),
-      React.createElement(Text, { style: styles.infoItem }, "White Sneakers"),
-      React.createElement(Text, { style: styles.infoSub }, "3x this week")
-    ),
+        {/* Cost per Wear */}
+        <View style={styles.infoBox}>
+          <Text style={styles.infoTitle}>Cost per Wear</Text>
+          <Text style={styles.infoItem}>White T-Shirt</Text>
+          <Text style={styles.infoSub}>$3.50 per wear</Text>
+        </View>
 
-    // Cost per Wear
-    React.createElement(
-      View,
-      { style: styles.infoBoxPurple },
-      React.createElement(Text, { style: styles.infoTitle }, "Cost per Wear"),
-      React.createElement(Text, { style: styles.infoItem }, "White T-Shirt"),
-      React.createElement(Text, { style: styles.infoSub }, "$3.50 per wear")
-    ),
-
-   
-    
+      </ScrollView>
+    </View>
   );
 }
 
+// --- Styles ---
 const styles = StyleSheet.create({
-  container: {
+  mainContainer: {
     flex: 1,
-    backgroundColor: "#fafafa",
+    backgroundColor: "#3C2332", 
   },
-
-  header: {
-    backgroundColor: "#56088B",
-    height: 60,
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  background: { 
+    position: 'absolute', 
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
   },
-
-  title: {
-    color: "#fafafa",
-    fontSize: 22,
-    fontFamily: "serif",
-    fontWeight: "600",
+  container: {
+    flex: 1, 
   },
-
+  scrollContent: {
+    paddingBottom: 90, 
+    alignItems: 'center',
+    paddingTop: 60, 
+    paddingHorizontal: 0, 
+    width: '100%',
+  },
   analyticsHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 25,
-    gap: 6,
+    marginBottom: 10,
+    gap: 10,
   },
-
   analyticsTitle: {
-    fontSize: 22,
-    color: "#56088B",
-    fontWeight: "600",
+    fontSize: 28,
+    color: "#FFFFFF",
+    fontWeight: "bold",
   },
-
   recapText: {
     fontSize: 20,
-    color: "#56088B",
-    fontWeight: "700",
+    color: "#FFFFFF",
+    fontWeight: "600",
     textAlign: "center",
-    marginTop: 10,
+    marginTop: 20,
+    marginBottom: 5,
+    textTransform: 'uppercase',
   },
-
-  outfitContainer: {
-    alignItems: "center",
+  outfitContent: {
+    alignItems: 'center',
+   paddingTop: 30,
+    paddingBottom: 80,
+  },
+  outfitItemImage: {
+    width: '75%', 
+    height: 150, 
+    resizeMode: 'contain',
+    marginVertical: 15, 
+  },
+  carouselWrapper: {
+    height: 500,
+    width: width,
     justifyContent: "center",
-    position: "relative",
-    height: 520,
+    alignItems: "center",
+    flexDirection: "row",
+    marginTop: 10,
+    marginBottom: 30,
   },
-
-  sideRectangleLeft: {
-    position: "absolute",
-    width: 255,
-    height: 493,
-    backgroundColor: "#F9CADA",
-    borderRadius: 10,
-    left: 35,
-    top: 10,
-    opacity: 0.8,
-  },
-
-  sideRectangleRight: {
-    position: "absolute",
-    width: 255,
-    height: 493,
-    backgroundColor: "#F9CADA",
-    borderRadius: 10,
-    right: 35,
-    top: 10,
-    opacity: 0.8,
-  },
-
-  outfitCard: {
-    backgroundColor: "#F9CADA",
+  outfitCard: { 
+    backgroundColor: "#714054",
     borderRadius: 15,
     alignItems: "center",
-    justifyContent: "center",
-    width: 270,
-    height: 500,
+    width: '100%', 
+    height: '100%', 
     elevation: 5,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 3,
-    zIndex: 2,
+    position: 'relative',
+    overflow: 'hidden',
   },
-
   shirt: {
+    width: 130,
+    height: 130,
+    resizeMode: "contain",
+    position: 'absolute',
+    top: '15%', 
+    alignSelf: 'center',
+    zIndex: 4,
+  },
+  jeans: {
     width: 160,
     height: 160,
-    resizeMode: "cover",
+    resizeMode: "contain",
+    position: 'absolute',
+    top: '45%', 
+    alignSelf: 'center',
+    zIndex: 3,
   },
-
-  jeans: {
-    width: 220,
-    height: 220,
-    resizeMode: "cover",
-    marginTop: -20,
-  },
-
   shoes: {
-    width: 110,
-    height: 90,
-    resizeMode: "cover",
-    marginTop: -10,
+    width: 90,
+    height: 70,
+    resizeMode: "contain",
+    position: 'absolute',
+    top: '78%', 
+    alignSelf: 'center',
+    zIndex: 4,
   },
-
+  shareIcon: {
+      position: 'absolute',
+      bottom: 15,
+      left: 15, 
+      zIndex: 5,
+  },
+  sideButton: {
+    position: "absolute",
+    top: "45%",
+    backgroundColor: "rgba(113, 64, 84, 0.6)",
+    padding: 8,
+    borderRadius: 30,
+    zIndex: 10,
+  },
   section: {
     alignItems: "center",
     marginTop: 10,
+    width: '90%',
   },
-
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "bold",
-    color: "#56088B",
+    color: "#FFFFFF",
     marginBottom: 10,
   },
-
-  infoBoxGreen: {
-    backgroundColor: "#D1EFDA",
+  pieChartStyle: {
+      borderRadius: 10,
+      marginTop: -10,
+  },
+  infoBox: {
+    backgroundColor: "#AB8C96",
     borderRadius: 10,
     padding: 15,
     marginHorizontal: 25,
-    marginTop: 15,
+    marginTop: 20,
+    width: width * 0.85,
   },
-
-  infoBoxPurple: {
-    backgroundColor: "#BA9EEF",
-    borderRadius: 10,
-    padding: 15,
-    marginHorizontal: 25,
-    marginTop: 15,
-    marginBottom: 30,
-  },
-
   infoTitle: {
     fontWeight: "bold",
-    fontSize: 15,
-    color: "#380065",
-  },
-
-  infoItem: {
     fontSize: 16,
-    color: "#380065",
+    color: "#3C2332",
+  },
+  infoItem: {
+    fontSize: 17,
+    color: "#3C2332",
     fontWeight: "600",
-    marginTop: 3,
+    marginTop: 4,
   },
-
   infoSub: {
-    fontSize: 13,
-    color: "#767575",
-    marginTop: 2,
-  },
-
-  bottomNav: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    backgroundColor: "#380065",
-    height: 70,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    marginTop: 10,
-  },
-
-  navItem: {
-    alignItems: "center",
-  },
-
-  navText: {
-    color: "#fafafa",
-    fontSize: 12,
+    fontSize: 14,
+    color: "#714054",
     marginTop: 3,
   },
 });

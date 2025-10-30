@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, SafeAreaView,Image } from 'react-native';
 import { Link } from 'expo-router';
@@ -6,34 +7,66 @@ import { useRouter } from 'expo-router';
 import { removeCredentials } from '../util/auth.js';
 
 type SettingsRowProps = {
+=======
+import React, { useMemo } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+} from "react-native";
+import { Link, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons"; // Used for all icons in settings
+
+// Define the structure for each settings item
+type SettingsItemProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+>>>>>>> Pragya
   label: string;
-  value: boolean;
-  onValueChange: (value: boolean) => void;
+  onPress?: () => void;
 };
-const SettingsRow: React.FC<SettingsRowProps> = ({ label, value, onValueChange }) => (
-  <View style={styles.row}>
-    <Text style={styles.rowLabel}>{label}</Text>
-    <Switch
-      trackColor={{ false: "#767577", true: "#BA9EEF" }}
-      thumbColor={value ? "#f5dd4b" : "#f4f3f4"}
-      onValueChange={onValueChange}
-      value={value}
-    />
-  </View>
-);
+
+// Settings items, defined as a function to accept the router
+const settingsItems = (router: any): SettingsItemProps[] => [
+  {
+    icon: "person-outline",
+    label: "Account",
+    // Example: onPress: () => router.push('/AccountPage')
+    // Add navigation logic here when ready
+  },
+  { icon: "notifications-outline", label: "Notifications" },
+  { icon: "eye-outline", label: "Appearance" },
+  { icon: "shirt-outline", label: "Clothing Mode" },
+  { icon: "lock-closed-outline", label: "Privacy & Security" },
+  { icon: "help-buoy-outline", label: "Help & Support" },
+  { icon: "information-circle-outline", label: "About" },
+];
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [darkMode, setDarkMode] = useState(false);
-  const [notifications, setNotifications] = useState(true);
-  const [modesty, setModesty] = useState(false);
+  const items = useMemo(() => settingsItems(router), [router]);
 
-
-  function handleSave() {
-    // Replace with real save logic
-    console.log({ darkMode, notifications, modesty });
-    alert('Settings saved');
-  }
+  const handleLogout = () => {
+    Alert.alert(
+      "Log Out",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "destructive",
+          onPress: () => {
+            // Add any actual logout logic here (e.g., clearing tokens)
+            console.log("Logging out...");
+            // Navigate to Login page and prevent going back
+            router.replace('/Loginpage'); 
+          }
+        }
+      ]
+    );
+  };
 
   const handleLogout = async () => {
     await removeCredentials();
@@ -42,31 +75,37 @@ export default function SettingsPage() {
   };
 
   return (
-    // safeareaview is deprecated we need to change that for next update
-    // <View style={styles.container}> for the header of settings
-    <SafeAreaView style={styles.page}>
-       <View style={styles.header}>
+    <View style={styles.page}>
+      {/* Header */}
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="white" />
+          <Ionicons name="arrow-back" size={28} color="#3C2332" />
         </TouchableOpacity>
-         
-         <View style={styles.headerCenter}>
-          <Image
-            source={require("../assets/images/Settings.png")}
-            style={styles.headerIcon}
-          />
+
+        <View style={styles.headerCenter}>
+          <Ionicons name="settings-outline" size={32} color="#3C2332" />
           <Text style={styles.headerTitle}>Settings</Text>
         </View>
-       
-       
-        <View style={{ width: 28 }} />{/* This is a spacer to center the title */}
+
+        {/* Spacer (Right) - balances the back button */}
+        <View style={{ width: 28 }} />
       </View>
-        
-       
-       
-       
 
+      {/* Settings List */}
+      <ScrollView contentContainerStyle={styles.listContainer}>
+        {items.map((item, index) => (
+          <TouchableOpacity
+            key={index}
+            style={styles.row}
+            onPress={item.onPress || (() => console.log(`Tapped: ${item.label}`))}
+          >
+            <Ionicons name={item.icon} size={24} color="#3C2332" style={styles.rowIcon} />
+            <Text style={styles.rowLabel}>{item.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
+<<<<<<< HEAD
 
         <View style={styles.card}>
           <SettingsRow
@@ -98,81 +137,80 @@ export default function SettingsPage() {
           <Text style={styles.buttonText}>Logout</Text>
         </TouchableOpacity>
     </SafeAreaView>
+=======
+      {/* Logout Button */}
+      <TouchableOpacity
+        style={styles.logoutButton}
+        onPress={handleLogout}
+      >
+        <Text style={styles.logoutButtonText}>Log Out</Text>
+      </TouchableOpacity>
+    </View>
+>>>>>>> Pragya
   );
 }
 
-// ✅ Styles using React Native's StyleSheet
+// Styles
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#DACCF4',
+    backgroundColor: '#E5D7D7',
+    paddingTop: 60,
   },
-   header: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#56088B',
-    paddingHorizontal: 15,
+    paddingHorizontal: 20,
+    justifyContent: "space-between", 
+    paddingBottom: 20,
     paddingTop: 10,
-    paddingBottom: 15,
-    borderTopLeftRadius: 20, // ✅ Your rounded corners
-    borderTopRightRadius: 20, // ✅ Your rounded corners
-  },
-   headerCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8, // Adds a small space between the icon and text
-  },
-  headerIcon: {
-    width: 32, // Adjusted size for better alignment
-    height: 32,
-  },
-  headerTitle: {
-    color: 'white',
-    fontSize: 25,
-    fontWeight: 'bold',
   },
   backButton: {
-    padding: 5, // Makes it easier to tap
+    padding: 5, // Increases the tap area
   },
-  container: {
-    flex: 1,
-    padding: 24,
-    
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingVertical: 10, // Add vertical padding
+  listContainer: {
     paddingHorizontal: 20,
-    elevation: 10,
-    marginTop: 20,
+  },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    color: '#3C2332',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginLeft: 10,
   },
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16, // Space out the rows
+    paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#AB8C96',
+  },
+  rowIcon: {
+      marginRight: 15,
   },
   rowLabel: {
-    fontSize: 16,
-    color: '#111827',
+    flex: 1,
+    fontSize: 18,
+    color: '#3C2332',
   },
-  button: {
-    marginTop: 24,
-    padding: 14,
+  logoutButton: {
+    backgroundColor: '#714054', // App theme color
     borderRadius: 8,
-    backgroundColor: '#56088B',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginHorizontal: 20, // Match list padding
+    marginTop: 20, // Space above the button
+    marginBottom: 40, // More space at the bottom
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  buttonText: {
+  logoutButtonText: {
     color: 'white',
-    fontWeight: '600',
     fontSize: 16,
+    fontWeight: 'bold',
   },
-
-
-
 });
+

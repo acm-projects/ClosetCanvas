@@ -18,7 +18,7 @@ export default function CommunityPage() {
        <View style={styles.header}>
               <Text style={styles.title0}>ClosetCanvas</Text>
              <Link href="/SettingsPage">
-             <Entypo name="menu" size={28} color="white" />
+             <Entypo name="user" size={28} color="white" />
              </Link>
             </View>
 

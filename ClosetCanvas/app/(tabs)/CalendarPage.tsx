@@ -1,476 +1,1003 @@
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+  Modal,
+  Pressable,
+  FlatList,
+  Alert,
+} from "react-native";
+// import { SafeAreaView } from "react-native-safe-area-context"; // <-- REMOVED
+import { Ionicons, Entypo } from "@expo/vector-icons";
+import { Link } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import React, { useState } from "react";
-import { View, Text, TextInput,Button, StyleSheet, Alert, Image, TouchableOpacity, ScrollView } from "react-native";
-// import { Ionicons } from "@expo/vector-icons";
-import { Calendar } from "react-native-calendars";
-import { Dimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, Entypo, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Link } from 'expo-router';
-//import { SafeAreaView } from "react-native-safe-area-context/lib/typescript/src/SafeAreaView";
+const { width } = Dimensions.get("window");
+
+// --- 1. Data Structures ---
+type EventItem = {
+  id: string;
+  title: string;
+  startTime: string; // e.g., "09:00"
+  endTime: string; // e.g., "10:30"
+  color?: string; // Optional color
+};
+
+type EventsByDate = {
+  [date: string]: EventItem[];
+};
+
+type OutfitByDate = {
+  [date: string]: ClosetDataItem[];
+};
+
+type ClosetDataItem = {
+  id: number;
+  source: any;
+  type: "local" | "user";
+  category: string;
+};
+
+// --- Helper: Get Current Week Days ---
+const getWeekDays = (
+  selected: string
+): { key: string; dayName: string; dayNum: string }[] => {
+  // Placeholder
+  const today = new Date(); // Or parse 'selected'
+  return [
+    { key: "2025-10-26", dayName: "SUN", dayNum: "26" },
+    { key: "2025-10-27", dayName: "MON", dayNum: "27" },
+    { key: "2025-10-28", dayName: "TUE", dayNum: "28" },
+    { key: "2025-10-29", dayName: "WED", dayNum: "29" },
+    { key: "2025-10-30", dayName: "THU", dayNum: "30" },
+    { key: "2025-10-31", dayName: "FRI", dayNum: "31" },
+    { key: "2025-11-01", dayName: "SAT", dayNum: "1" },
+  ];
+};
+
+// --- App Color Palette for Events ---
+const APP_EVENT_COLORS = [
+  "#DE8672",
+  "#F9E3B4",
+  "#714054",
+  "#3C2332",
+  "#FDAF41",
+  "#AB8C96",
+];
 
 export default function CalendarPage() {
-   const [selectedDate, setSelectedDate] = useState("");
-   const screenWidth = Dimensions.get("window").width;
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [events, setEvents] = useState<EventsByDate>({});
+  const [outfits, setOutfits] = useState<OutfitByDate>({});
+  const [isEventModalVisible, setIsEventModalVisible] = useState(false);
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventStartTime, setNewEventStartTime] = useState("");
+  const [newEventEndTime, setNewEventEndTime] = useState("");
+
+  const [isOutfitModalVisible, setIsOutfitModalVisible] = useState(false);
+  const [availableOutfits, setAvailableOutfits] = useState<ClosetDataItem[]>(
+    []
+  );
+  const [tempSelectedOutfits, setTempSelectedOutfits] = useState<
+    ClosetDataItem[]
+  >([]);
+  const [startAmPm, setStartAmPm] = useState("AM");
+  const [endAmPm, setEndAmPm] = useState("AM");
+
+  const weekDays = useMemo(() => getWeekDays(selectedDate), [selectedDate]);
+
+  // --- Load and Save Data ---
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const storedEvents = await AsyncStorage.getItem("plannerEvents");
+      const storedOutfits = await AsyncStorage.getItem("plannerOutfits");
+      const storedUserImages = await AsyncStorage.getItem("userImages");
+      const storedLocalItems = await AsyncStorage.getItem("localItems");
+
+      if (storedEvents) setEvents(JSON.parse(storedEvents));
+      if (storedOutfits) setOutfits(JSON.parse(storedOutfits));
+
+      const userImagesData = storedUserImages
+        ? JSON.parse(storedUserImages)
+        : [];
+      const localItemsData = storedLocalItems
+        ? JSON.parse(storedLocalItems)
+        : [];
+      setAvailableOutfits([...localItemsData, ...userImagesData]);
+    } catch (e) {
+      console.error("Failed to load planner data", e);
+    }
+  };
+
+  const saveData = async () => {
+    try {
+      await AsyncStorage.setItem("plannerEvents", JSON.stringify(events));
+      await AsyncStorage.setItem("plannerOutfits", JSON.stringify(outfits));
+    } catch (e) {
+      console.error("Failed to save planner data", e);
+    }
+  };
+
+  useEffect(() => {
+    saveData();
+  }, [events, outfits]);
+
+  // --- MOVED handleDeleteEvent to be its own function ---
+  const handleDeleteEvent = useCallback(
+    (eventId: string) => {
+      Alert.alert(
+        "Delete Event",
+        "Are you sure you want to permanently delete this event?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              const updatedDayEvents = (events[selectedDate] || []).filter(
+                (e) => e.id !== eventId
+              );
+              setEvents((prev) => ({
+                ...prev,
+                [selectedDate]: updatedDayEvents,
+              }));
+            },
+          },
+        ]
+      );
+    },
+    [events, selectedDate]
+  ); // Add dependencies
+
+  const handleAddEvent = () => {
+    const timeRegex = /^(0[1-9]|1[0-2]):([0-5]\d)$/;
+    if (
+      !newEventTitle ||
+      !newEventStartTime ||
+      !newEventEndTime ||
+      !timeRegex.test(newEventStartTime) ||
+      !timeRegex.test(newEventEndTime)
+    ) {
+      Alert.alert(
+        "Invalid Input",
+        "Please enter a title, and start/end times in HH:MM format (e.g., 09:30)."
+      );
+      return;
+    }
+
+    const convertTo24Hour = (time: string, ampm: string): string => {
+      const [hour, minute] = time.split(":");
+      let hourInt = parseInt(hour);
+      if (ampm === "PM" && hourInt !== 12) {
+        hourInt += 12;
+      }
+      if (ampm === "AM" && hourInt === 12) {
+        hourInt = 0;
+      }
+      return `${hourInt.toString().padStart(2, "0")}:${minute}`;
+    };
+
+    const startTime24 = convertTo24Hour(newEventStartTime, startAmPm);
+    const endTime24 = convertTo24Hour(newEventEndTime, endAmPm);
+
+    const startMinutes =
+      parseInt(startTime24.split(":")[0]) * 60 +
+      parseInt(startTime24.split(":")[1]);
+    const endMinutes =
+      parseInt(endTime24.split(":")[0]) * 60 +
+      parseInt(endTime24.split(":")[1]);
+    if (startMinutes >= endMinutes) {
+      Alert.alert("Invalid Time", "End time must be after start time.");
+      return;
+    }
+
+    const newEvent: EventItem = {
+      id: Date.now().toString(),
+      title: newEventTitle,
+      startTime: startTime24,
+      endTime: endTime24,
+      color:
+        APP_EVENT_COLORS[Math.floor(Math.random() * APP_EVENT_COLORS.length)],
+    };
+
+    setEvents((prev) => ({
+      ...prev,
+      [selectedDate]: [...(prev[selectedDate] || []), newEvent],
+    }));
+
+    setNewEventTitle("");
+    setNewEventStartTime("");
+    setNewEventEndTime("");
+    setStartAmPm("AM");
+    setEndAmPm("AM");
+    setIsEventModalVisible(false);
+  };
+
+  const handleAddOutfit = () => {
+    const currentOutfit = outfits[selectedDate] || [];
+    setTempSelectedOutfits(currentOutfit);
+    setIsOutfitModalVisible(true);
+  };
+
+  const toggleOutfitItem = (item: ClosetDataItem) => {
+    setTempSelectedOutfits((prev) => {
+      const isSelected = prev.some(
+        (selectedItem) => selectedItem.id === item.id
+      );
+      if (isSelected) {
+        return prev.filter((selectedItem) => selectedItem.id !== item.id);
+      } else {
+        return [...prev, item];
+      }
+    });
+  };
+
+  const confirmOutfitSelection = () => {
+    setOutfits((prev) => ({ ...prev, [selectedDate]: tempSelectedOutfits }));
+    setIsOutfitModalVisible(false);
+  };
+
+  const handleRemoveOutfit = () => {
+    setOutfits((prev) => ({ ...prev, [selectedDate]: [] }));
+  };
+
+  // --- MODIFIED: Added .sort() ---
+  const selectedDayEvents = (events[selectedDate] || []).sort((a, b) =>
+    a.startTime.localeCompare(b.startTime)
+  );
+  const selectedDayOutfit = outfits[selectedDate] || [];
+
   return (
-    <ScrollView style={styles.container}>
-    <SafeAreaView style={{ flex: 1 }}>
-    <View style={styles.container}>
-       
-       <View style={styles.header}>
-              <Text style={styles.title0}>ClosetCanvas</Text>
-              <Link href="/SettingsPage">
-                <Entypo name="menu" size={28} color="white" />
-              </Link>
+    <View style={styles.flexContainer}>
+      <View style={styles.calendarContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.weekScroll}
+        >
+          {weekDays.map((day) => (
+            <TouchableOpacity
+              key={day.key}
+              style={styles.dayContainer}
+              onPress={() => setSelectedDate(day.key)}
+            >
+              <Text
+                style={[
+                  styles.dayName,
+                  selectedDate === day.key && styles.selectedTextPurple,
+                ]}
+              >
+                {day.dayName}
+              </Text>
+              <View
+                style={[
+                  styles.dayNumberCircle,
+                  selectedDate === day.key && styles.selectedDayNumberCircle,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    selectedDate === day.key && styles.selectedTextWhite,
+                  ]}
+                >
+                  {day.dayNum}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <ScrollView style={styles.contentArea}>
+        <Text style={styles.sectionTitle}>Outfit for {selectedDate}</Text>
+        <View style={styles.outfitSection}>
+          {selectedDayOutfit.length > 0 ? (
+            <View style={styles.outfitDisplayContainer}>
+              <View style={styles.outfitDisplay}>
+                {selectedDayOutfit.map((item) => (
+                  <Image
+                    key={item.id}
+                    source={item.source}
+                    style={styles.outfitImage}
+                  />
+                ))}
+              </View>
+              <TouchableOpacity
+                onPress={handleRemoveOutfit}
+                style={styles.removeOutfitButton}
+              >
+                <Ionicons name="close-circle" size={24} color="#D32F2F" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleAddOutfit}
+                style={styles.editOutfitButton}
+              >
+                <Entypo name="edit" size={20} color="#4B0082" />
+              </TouchableOpacity>
             </View>
-      
-        <View style={styles.headerRow}>
-      <Image source={require("../../assets/images/calendarIcon.svg")}
-        style={{ width: 50, height: 50 }} />
-     
+          ) : (
+            <TouchableOpacity
+              style={styles.addOutfitButton}
+              onPress={handleAddOutfit}
+            >
+              <Ionicons name="add-circle-outline" size={30} color="#4B0082" />
+              <Text style={styles.addOutfitText}>Add Outfit</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
+        <View style={styles.eventsHeader}>
+          <Text style={styles.sectionTitle}>Events for {selectedDate}</Text>
+        </View>
 
-      <Text style={styles.title}>Weekly Planner</Text>
-      </View>
+        <View style={styles.timeGridContainer}>
+          <View style={styles.timeLabelsColumn}>
+            {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+              <View key={`label-${hour}`} style={styles.timeLabelCell}>
+                <Text style={styles.timeLabelText}>
+                  {hour === 0
+                    ? "12 AM"
+                    : hour === 12
+                    ? "12 PM"
+                    : hour > 12
+                    ? `${hour - 12} PM`
+                    : `${hour} AM`}
+                </Text>
+              </View>
+            ))}
+          </View>
 
+          <View style={styles.eventsColumn}>
+            {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+              <View key={`line-${hour}`} style={styles.gridLine} />
+            ))}
 
- <Calendar
-        onDayPress={(day) => setSelectedDate(day.dateString)}
-        markedDates={{
-          [selectedDate]: { selected: true, selectedColor: "#4B0082" },
-        }}
-        theme={{
-          backgroundColor: "#ffffff",
-          calendarBackground: "#ffffff",
-          textSectionTitleColor: "#4B0082",
-          selectedDayBackgroundColor: "#4B0082",
-          selectedDayTextColor: "#ffffff",
-          todayTextColor: "#FF5722",
-          dayTextColor: "#333333",
-          textDisabledColor: "#d9e1e8",
-          monthTextColor: "#4B0082",
-          arrowColor: "#4B0082",
-          textMonthFontWeight: "bold",
-          textDayFontSize: 16,
-          textMonthFontSize: 20,
-          textDayHeaderFontSize: 14,
-        }}
-      />
+            {/* --- MODIFIED: Replaced .map with new logic --- */}
+            {(() => {
+              const eventBlocks = [];
+              let currentOverlapLevel = 0;
+              let maxEndTimeInGroup = -1; // End time in minutes
 
-    
-      {selectedDate ? (
-        <Text style={styles.selectedText}>
-          Selected Date: <Text style={{ fontWeight: "bold" }}>{selectedDate}</Text>
-        </Text>
-      ) : null}
+              for (const event of selectedDayEvents) {
+                // 1. Validation
+                const timeRegex = /^\d{2}:\d{2}$/;
+                if (
+                  !event.startTime ||
+                  !event.endTime ||
+                  !timeRegex.test(event.startTime) ||
+                  !timeRegex.test(event.endTime)
+                ) {
+                  console.warn(`Skipping event...`);
+                  continue; // Use continue instead of return null
+                }
 
+                // 2. Calculation
+                const hourHeight = 60;
+                const startHour = parseInt(event.startTime.split(":")[0]);
+                const startMinute = parseInt(event.startTime.split(":")[1]);
+                const endHour = parseInt(event.endTime.split(":")[0]);
+                const endMinute = parseInt(event.endTime.split(":")[1]);
 
+                if (
+                  isNaN(startHour) ||
+                  isNaN(startMinute) ||
+                  isNaN(endHour) ||
+                  isNaN(endMinute)
+                )
+                  continue;
 
-         <View style={[styles.block, { backgroundColor: "#E9D8FD" }]}>
-        <Text style={styles.blockTitle}>Portfolio</Text>
-        <Text style={styles.blockTime}>10am - 10:30am</Text>
-      </View>
+                const startMinutes = startHour * 60 + startMinute;
+                const endMinutes = endHour * 60 + endMinute;
+                const durationMinutes = Math.max(15, endMinutes - startMinutes);
 
-      <View style={[styles.block, { backgroundColor: "#D1EFDA" }]}>
-        <Text style={styles.blockTitle}>Meeting</Text>
-        <Text style={styles.blockTime}>11am - 12pm</Text>
-      </View>
+                const gridStartHour = 0;
+                const gridStartMinutes = gridStartHour * 60;
+                const topPosition =
+                  ((startMinutes - gridStartMinutes) / 60) * hourHeight;
+                const eventHeight = (durationMinutes / 60) * hourHeight;
+                const totalGridHeight = hourHeight * 24;
 
-      <View style={[styles.block, { backgroundColor: "#F9E2EA" }]}>
-        <Text style={styles.blockTitle}>Lunch</Text>
-        <Text style={styles.blockTime}>1pm - 2pm</Text>
-      </View>
+                if (
+                  endMinutes <= gridStartMinutes ||
+                  startMinutes >= (gridStartHour + 24) * 60 ||
+                  eventHeight <= 0
+                ) {
+                  continue;
+                }
+                const clampedTop = Math.max(0, topPosition);
+                const adjustedHeight = Math.min(
+                  eventHeight - (clampedTop - topPosition),
+                  totalGridHeight - clampedTop
+                );
 
-      <View style={[styles.block, { backgroundColor: "#E9D8FD" }]}>
-        <Text style={styles.blockTitle}>Sleep</Text>
-        <Text style={styles.blockTime}>10pm - 7am</Text>
-      </View>
+                // 3. --- NEW Overlap Logic ---
+                if (startMinutes >= maxEndTimeInGroup) {
+                  // This event does NOT overlap. Reset the level.
+                  currentOverlapLevel = 0;
+                } else {
+                  // This event DOES overlap. Increment the level.
+                  currentOverlapLevel++;
+                }
+                maxEndTimeInGroup = Math.max(maxEndTimeInGroup, endMinutes);
 
+                const overlapOffset = (currentOverlapLevel % 4) * 10;
+                const zIndex = currentOverlapLevel;
+                // --- End of New Logic ---
 
-           
+                // 4. Create and push the component
+                eventBlocks.push(
+                  <Pressable
+                    key={event.id}
+                    onLongPress={() => handleDeleteEvent(event.id)} // Add delete handler
+                    style={[
+                      styles.eventBlock, // Use updated style (no left/right)
+                      {
+                        top: clampedTop,
+                        height: adjustedHeight,
+                        backgroundColor: event.color || "#4A90E2",
+                        borderLeftColor: event.color
+                          ? darkenColor(event.color, 20)
+                          : "#357ABD",
+                        // Apply dynamic layout styles
+                        left: 4 + overlapOffset,
+                        right: 10, // Gives space for other items
+                        zIndex: zIndex,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.eventBlockTitle} numberOfLines={1}>
+                      {event.title}
+                    </Text>
+                    <Text style={styles.eventBlockTime} numberOfLines={1}>
+                      {formatTime(event.startTime)} -{" "}
+                      {formatTime(event.endTime)}
+                    </Text>
+                  </Pressable>
+                );
+              }
+              return eventBlocks; // Render the array of components
+            })()}
+            {/* End of Render Events */}
+          </View>
+        </View>
+
+        {selectedDayEvents.length === 0 && (
+          <Text style={styles.noEventsText}>
+            No events scheduled for this day.
+          </Text>
+        )}
+      </ScrollView>
+
+      {/* --- Add Event Modal --- */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isEventModalVisible}
+        onRequestClose={() => setIsEventModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setIsEventModalVisible(false)}
+        >
+          <Pressable style={styles.modalView} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Add New Event</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Event Title"
+              placeholderTextColor="#aaa"
+              value={newEventTitle}
+              onChangeText={setNewEventTitle}
+            />
+
+            <View style={styles.timeInputContainer}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Start Time (HH:MM)"
+                placeholderTextColor="#aaa"
+                value={newEventStartTime}
+                onChangeText={setNewEventStartTime}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+              />
+              <TouchableOpacity
+                style={styles.amPmToggle}
+                onPress={() =>
+                  setStartAmPm((prev) => (prev === "AM" ? "PM" : "AM"))
+                }
+              >
+                <Text style={styles.amPmText}>{startAmPm}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.timeInputContainer}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="End Time (HH:MM)"
+                placeholderTextColor="#aaa"
+                value={newEventEndTime}
+                onChangeText={setNewEventEndTime}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+              />
+              <TouchableOpacity
+                style={styles.amPmToggle}
+                onPress={() =>
+                  setEndAmPm((prev) => (prev === "AM" ? "PM" : "AM"))
+                }
+              >
+                <Text style={styles.amPmText}>{endAmPm}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButtonBase, styles.modalButtonCancel]}
+                onPress={() => setIsEventModalVisible(false)}
+              >
+                <Text
+                  style={[styles.modalButtonText, styles.modalButtonTextCancel]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButtonBase, styles.modalButtonConfirm]}
+                onPress={handleAddEvent}
+              >
+                <Text style={styles.modalButtonText}>Add Event</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* --- Outfit Selection Modal --- */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isOutfitModalVisible}
+        onRequestClose={() => setIsOutfitModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setIsOutfitModalVisible(false)}
+        >
+          <Pressable
+            style={[styles.modalView, styles.outfitModalView]}
+            onPress={() => {}}
+          >
+            <Text style={styles.modalTitle}>
+              Select Outfit for {selectedDate}
+            </Text>
+            {availableOutfits.length === 0 ? (
+              <Text style={styles.noEventsText}>
+                No outfits found in your closet.
+              </Text>
+            ) : (
+              <FlatList
+                data={availableOutfits}
+                keyExtractor={(item) => item.id.toString()}
+                numColumns={3}
+                renderItem={({ item }) => {
+                  const isSelected = tempSelectedOutfits.some(
+                    (selected) => selected.id === item.id
+                  );
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.outfitSelectItem,
+                        isSelected && styles.outfitSelectItem_Selected,
+                      ]}
+                      onPress={() => toggleOutfitItem(item)}
+                    >
+                      <Image
+                        source={item.source}
+                        style={styles.outfitSelectImage}
+                      />
+                      {isSelected && (
+                        <View style={styles.selectedCheckmark}>
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color="#714054"
+                          />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+                contentContainerStyle={styles.outfitListContainer}
+              />
+            )}
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButtonBase, styles.modalButtonCancel]}
+                onPress={() => setIsOutfitModalVisible(false)}
+              >
+                <Text
+                  style={[styles.modalButtonText, styles.modalButtonTextCancel]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButtonBase, styles.modalButtonConfirm]}
+                onPress={confirmOutfitSelection}
+              >
+                <Text style={styles.modalButtonText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <TouchableOpacity
+        style={styles.floatingAddButton}
+        onPress={() => setIsEventModalVisible(true)}
+      >
+        <Ionicons name="add" size={32} color="white" />
+      </TouchableOpacity>
     </View>
-   </SafeAreaView>
-   </ScrollView>
   );
 }
 
+// --- Helper functions ---
+function darkenColor(hex: string, percent: number): string {
+  hex = hex.replace(/^\s*#|\s*$/g, "");
+  if (hex.length === 3) {
+    hex = hex.replace(/(.)/g, "$1$1");
+  }
+  let r = parseInt(hex.substring(0, 2), 16),
+    g = parseInt(hex.substring(2, 4), 16),
+    b = parseInt(hex.substring(4, 6), 16);
+  const factor = (100 - percent) / 100;
+  r = Math.min(255, Math.max(0, Math.round(r * factor)));
+  g = Math.min(255, Math.max(0, Math.round(g * factor)));
+  b = Math.min(255, Math.max(0, Math.round(b * factor)));
+  return `#${r.toString(16).padStart(2, "0")}${g
+    .toString(16)
+    .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+function formatTime(time24: string): string {
+  const [hourStr, minuteStr] = time24.split(":");
+  const hour = parseInt(hourStr);
+  const minute = parseInt(minuteStr);
+  if (isNaN(hour) || isNaN(minute)) return time24;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minuteStr} ${ampm}`;
+}
+
+// --- Styles ---
 const styles = StyleSheet.create({
-  container: {
+  flexContainer: {
     flex: 1,
-    paddingHorizontal: 3,
-   
+    backgroundColor: "#E5D7D7",
   },
-  header: {
-    backgroundColor: "#56088B",
-    height: 60,
-    paddingHorizontal: 20,
-    paddingTop: 15,
+  eventsHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
   },
-
-  title0: {
-    color: "#fafafa",
-    fontSize: 22,
-    fontFamily: "serif",
-    fontWeight: "600",
+  calendarContainer: {
+    backgroundColor: "#714054",
+    paddingHorizontal: 10,
+    paddingTop: 50,
+    paddingBottom: 15,
   },
-
-  headerRow: {
-    flexDirection: "row", // <-- makes icon + title side by side
+  weekScroll: {
     alignItems: "center",
-    marginBottom: 20,
+    paddingVertical: 5,
   },
-  icon: {
+  dayContainer: {
+    alignItems: "center",
+    marginHorizontal: 10,
+    paddingVertical: 5,
+  },
+  dayName: {
+    fontSize: 12,
+    color: "#E0D0F8",
+    marginBottom: 8,
+  },
+  dayNumberCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "transparent",
+  },
+  selectedDayNumberCircle: {
+    backgroundColor: "white",
+  },
+  dayNumber: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "white",
+  },
+  selectedTextPurple: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  selectedTextWhite: {
+    color: "#714054",
+  },
+  contentArea: {
+    flex: 1,
+    padding: 15,
+    backgroundColor: "#E5D7D7",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#3C2332",
+    marginBottom: 15,
+  },
+  outfitSection: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+    alignItems: "center",
+    minHeight: 100,
+    justifyContent: "center",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  addOutfitButton: {
+    alignItems: "center",
+  },
+  addOutfitText: {
+    marginTop: 5,
+    color: "#4B0082",
+    fontSize: 14,
+  },
+  outfitDisplayContainer: {
+    position: "relative",
+    width: "100%",
+    alignItems: "center",
+  },
+  outfitDisplay: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  outfitImage: {
+    width: 60,
+    height: 60,
+    resizeMode: "contain",
+    borderRadius: 8,
+    margin: 4,
+    backgroundColor: "#f0f0f0",
+  },
+  removeOutfitButton: {
+    position: "absolute",
+    top: -12,
+    right: -5,
+    backgroundColor: "white",
+    borderRadius: 15,
+    zIndex: 10,
+  },
+  editOutfitButton: {
+    position: "absolute",
+    top: -10,
+    left: -5,
+    backgroundColor: "white",
+    borderRadius: 15,
+    zIndex: 10,
+    padding: 2,
+  },
+  floatingAddButton: {
+    position: "absolute",
     width: 50,
     height: 50,
-    marginRight: 10,
-  },
-  title: {
-    fontSize: 46,
-    fontWeight: "400",
-    color: "#4B0082",
-  },
-  selectedText: {
-    fontSize: 16,
-    color: "#4B0082",
-    marginVertical: 10,
-  },
-  block: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    borderRadius: 30,
+    backgroundColor: "#714054", // Your theme color
+    justifyContent: "center",
     alignItems: "center",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 10,
+    elevation: 8,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    bottom: 30, // Distance from bottom
+    right: 30, // Distance from right
+    zIndex: 10, // Make sure it's on top
   },
-  blockTitle: {
-    fontSize: 18,
+  noEventsText: {
+    textAlign: "center",
+    color: "#888",
+    marginTop: 40,
+    fontSize: 15,
+  },
+  timeGridContainer: {
+    flexDirection: "row",
+    marginTop: 10,
+    backgroundColor: "white",
+    borderRadius: 8,
+    paddingTop: 10,
+    paddingBottom: 10,
+    minHeight: 60 * 24,
+  },
+  timeLabelsColumn: {
+    width: 60,
+    paddingRight: 10,
+  },
+  timeLabelCell: {
+    height: 60,
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 5,
+  },
+  timeLabelText: {
+    fontSize: 12,
+    color: "#666",
+  },
+  eventsColumn: {
+    flex: 1,
+    position: "relative",
+    borderLeftWidth: 1,
+    borderLeftColor: "#eee",
+  },
+  gridLine: {
+    height: 60,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  eventBlock: {
+    position: "absolute",
+    backgroundColor: "#4A90E2", // Default color
+    borderRadius: 4,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    overflow: "hidden",
+    borderLeftWidth: 3,
+    elevation: 1, // Subtle shadow
+  },
+  eventBlockTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "white",
+    marginBottom: 1,
+  },
+  eventBlockTime: {
+    fontSize: 10,
+    color: "rgba(255, 255, 255, 0.85)",
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  modalView: {
+    width: "90%",
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 25,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 20,
     color: "#333",
   },
-  blockTime: {
-    fontSize: 14,
-    color: "#555",
+  input: {
+    width: "100%",
+    height: 45,
+    borderColor: "#ddd",
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 15,
+    paddingHorizontal: 15,
+    fontSize: 16,
   },
-   bottomNav: {
+  timeInputContainer: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    width: "100%",
     alignItems: "center",
-    backgroundColor: "#380065",
-    height: 70,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  },
+  timeInput: {
+    flex: 1,
+    marginRight: 10,
+  },
+  amPmToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#eee",
+    borderRadius: 8,
+    height: 45,
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+  amPmText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#714054",
+  },
+  modalButtonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
     marginTop: 10,
   },
-
-  navItem: {
+  modalButtonBase: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    marginHorizontal: 5,
     alignItems: "center",
   },
-
-  navText: {
-    color: "#fafafa",
-    fontSize: 12,
-    marginTop: 3,
+  modalButtonCancel: {
+    backgroundColor: "#eee",
+  },
+  modalButtonConfirm: {
+    backgroundColor: "#714054",
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "white",
+  },
+  modalButtonTextCancel: {
+    color: "#555",
+  },
+  outfitModalView: {
+    height: "80%",
+  },
+  outfitListContainer: {
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  outfitSelectItem: {
+    width: (width * 0.9 - 50) / 3,
+    aspectRatio: 1,
+    padding: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "transparent",
+    borderRadius: 10,
+  },
+  outfitSelectItem_Selected: {
+    borderColor: "#714054",
+  },
+  outfitSelectImage: {
+    width: "90%",
+    height: "90%",
+    resizeMode: "contain",
+    borderRadius: 8,
+    backgroundColor: "#f0f0f0",
+  },
+  selectedCheckmark: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    backgroundColor: "white",
+    borderRadius: 12,
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// import React, { useState } from "react";
-// import { View, Text, TextInput,Button, StyleSheet, Alert, Image, TouchableOpacity } from "react-native";
-
-
-
-
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     padding: 20,
-//     marginTop: 80,
-//     justifyContent: "flex-start",
-//     alignItems: "flex-start",
-//     backgroundColor: "#fff",
-//   },
-//   calendarImage: {
-    
-//     width: 50,
-//     height: 50,
-//     marginBottom: 20,
-//   }
-
-// });
-
-// export default function LoginScreen() {
-//  return (
-//     <View style={styles.container}>
-
-//      <Image
-//       source={require("../../assets/images/calendarIcon.svg")}
-//       style={{ width: 50, height:50 }}
-//       />
-
-
-//       <Text style={{fontSize: 24, fontWeight: "bold", marginBottom: 20}}>Calendar Page</Text>
-
-
-
-//         </View>
-//       )
-
-// }
-
-
-// nfweufhasdhfaksjdfhaksjdfaksjdfhaksjdfhasdkljfhasdlkjfhadskljfhdaskljfhaklsdjafh
-
-
-// import React from 'react';
-
-// // --- SVG Icon Components ---
-// // These components replace the icons from @expo/vector-icons for web compatibility.
-
-// const CalendarIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-//     <line x1="16" y1="2" x2="16" y2="6"></line>
-//     <line x1="8" y1="2" x2="8" y2="6"></line>
-//     <line x1="3" y1="10" x2="21" y2="10"></line>
-//   </svg>
-// );
-
-// const MenuIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//     <line x1="3" y1="12" x2="21" y2="12"></line>
-//     <line x1="3" y1="6" x2="21" y2="6"></line>
-//     <line x1="3" y1="18" x2="21" y2="18"></line>
-//   </svg>
-// );
-
-// const ShirtIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//         <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path>
-//     </svg>
-// );
-
-// const UsersIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-//         <circle cx="9" cy="7" r="4"></circle>
-//         <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-//         <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-//     </svg>
-// );
-
-// const HomeIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//     <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-//     <polyline points="9 22 9 12 15 12 15 22"></polyline>
-//   </svg>
-// );
-
-// const BarChartIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//     <line x1="12" y1="20" x2="12" y2="10"></line>
-//     <line x1="18" y1="20" x2="18" y2="4"></line>
-//     <line x1="6" y1="20" x2="6" y2="16"></line>
-//   </svg>
-// );
-
-// const ChevronLeftIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//     <polyline points="15 18 9 12 15 6"></polyline>
-//   </svg>
-// );
-
-// const ChevronRightIcon = ({ className = 'w-6 h-6', color = 'currentColor' }) => (
-//   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-//     <polyline points="9 18 15 12 9 6"></polyline>
-//   </svg>
-// );
-
-
-// // --- Mock Data ---
-// const scheduleData = [
-//   { title: 'Portfolio', time: '10am-10:30am', color: 'bg-purple-200', textColor: 'text-purple-800' },
-//   { title: 'Meeting', time: '11am-12pm', color: 'bg-green-200', textColor: 'text-green-800' },
-//   { title: 'Lunch', time: '1pm-2pm', color: 'bg-pink-200', textColor: 'text-pink-800' },
-//   { title: 'Sleep', time: '10pm-7am', color: 'bg-indigo-200', textColor: 'text-indigo-800' },
-// ];
-
-// const calendarDays = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-// const calendarDates = [
-//   ...Array.from({ length: 31 }, (_, i) => ({ day: i + 1, currentMonth: true })),
-//   ...Array.from({ length: 4 }, (_, i) => ({ day: i + 1, currentMonth: false })),
-// ];
-
-// const bottomNavItems = [
-//     { name: 'Wardrobe', Icon: ShirtIcon, active: false },
-//     { name: 'Community', Icon: UsersIcon, active: false },
-//     { name: 'Home', Icon: HomeIcon, active: false },
-//     { name: 'Planner', Icon: CalendarIcon, active: true },
-//     { name: 'Analytics', Icon: BarChartIcon, active: false },
-// ];
-
-
-// // --- Main App Component ---
-// export default function App() {
-//   return (
-//     <div className="bg-violet-800 font-sans antialiased text-gray-800">
-//         <div className="relative min-h-screen bg-gray-100 md:w-96 md:mx-auto md:shadow-lg">
-//             <Header />
-//             <main className="pt-20 pb-24">
-//                 <div className="p-4">
-//                     <div className="flex items-center mb-4">
-//                         <CalendarIcon className="w-8 h-8 text-violet-500" />
-//                         <h2 className="text-3xl font-bold text-gray-800 ml-3">Weekly Planner</h2>
-//                     </div>
-
-//                     <ScheduleList />
-//                     <Calendar />
-//                 </div>
-//             </main>
-//             <BottomNavBar />
-//         </div>
-//     </div>
-//   );
-// }
-
-// // --- Reusable Components ---
-
-// const Header = () => (
-//     <header className="bg-violet-800 h-16 flex items-center justify-between px-4 fixed top-0 w-full md:w-96 z-10">
-//         <h1 style={{fontFamily: 'serif', fontWeight: 'bold'}} className="text-white text-3xl italic">ClosetCanvas</h1>
-//         <MenuIcon className="w-7 h-7 text-white" />
-//     </header>
-// );
-
-// const ScheduleList = () => (
-//     <div className="mb-6 space-y-3">
-//         {scheduleData.map((item, index) => (
-//             <div key={index} className={`flex justify-between items-center p-4 rounded-xl ${item.color}`}>
-//                 <p className={`text-lg font-semibold ${item.textColor}`}>{item.title}</p>
-//                 <p className={`text-base font-medium ${item.textColor}`}>{item.time}</p>
-//             </div>
-//         ))}
-//     </div>
-// );
-
-// const Calendar = () => (
-//     <div className="bg-white rounded-2xl p-4 shadow-md">
-//         <div className="flex justify-between items-center mb-4">
-//             <ChevronLeftIcon className="w-6 h-6 text-gray-400 cursor-pointer" />
-//             <p className="text-xl font-bold text-gray-800">May 2023</p>
-//             <ChevronRightIcon className="w-6 h-6 text-gray-400 cursor-pointer" />
-//         </div>
-
-//         <div className="grid grid-cols-7 gap-y-2 text-center mb-2">
-//             {calendarDays.map((day) => (
-//                 <div key={day} className="text-gray-500 font-medium text-sm">{day}</div>
-//             ))}
-//         </div>
-
-//         <div className="grid grid-cols-7 gap-y-2 text-center">
-//             {/* Placeholder for empty days at the start of the month */}
-//             <div className="w-10 h-10"></div>
-//             <div className="w-10 h-10"></div>
-
-
-//             {calendarDates.map(({day, currentMonth}, index) => {
-//                 const isSelected = day === 18 && currentMonth;
-//                 const textColor = isSelected ? 'text-white' : currentMonth ? 'text-gray-700' : 'text-gray-300';
-//                 const dayStyle = isSelected ? 'bg-violet-600' : '';
-//                 return (
-//                     <div key={index} className={`w-10 h-10 flex items-center justify-center rounded-full mx-auto ${dayStyle} cursor-pointer`}>
-//                         <span className={`text-base ${textColor}`}>{day}</span>
-//                     </div>
-//                 );
-//             })}
-//         </div>
-//     </div>
-// );
-
-// const BottomNavBar = () => (
-//     <footer className="absolute bottom-0 left-0 right-0 h-20 bg-violet-800 flex justify-around items-center rounded-t-3xl">
-//         {bottomNavItems.map(({ name, Icon, active }, index) => {
-//             const color = active ? 'white' : '#A78BFA'; // Active: white, Inactive: violet-300
-//             return (
-//                 <div key={index} className="flex flex-col items-center cursor-pointer">
-//                     <Icon className="w-6 h-6" color={color} />
-//                     <p style={{color}} className="text-xs mt-1">{name}</p>
-//                 </div>
-//             );
-//         })}
-//     </footer>
-// );
-
