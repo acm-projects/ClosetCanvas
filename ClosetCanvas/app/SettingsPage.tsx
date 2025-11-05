@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons"; // Used for all icons in settings
+import { removeCredentials } from "../util/auth";
 
 // Define the structure for each settings item
 type SettingsItemProps = {
@@ -37,7 +38,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const items = useMemo(() => settingsItems(router), [router]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     Alert.alert(
       "Log Out",
       "Are you sure you want to log out?",
@@ -46,11 +47,12 @@ export default function SettingsPage() {
         {
           text: "Log Out",
           style: "destructive",
-          onPress: () => {
-            // Add any actual logout logic here (e.g., clearing tokens)
-            console.log("Logging out...");
+          onPress: async () => {
+            // Clear credentials from secure storage
+            await removeCredentials();
+            console.log("User logged out, credentials removed.");
             // Navigate to Login page and prevent going back
-            router.replace('/Loginpage'); 
+            router.replace('/Loginpage');
           }
         }
       ]

@@ -1,10 +1,11 @@
 import React, { useState,useEffect,useMemo,useCallback } from "react";
-import { View,Text,Modal,StyleSheet,Image, TouchableOpacity,Pressable,Dimensions, ScrollView,Alert} from "react-native";
+import { View,Text,Modal,StyleSheet,Image, TouchableOpacity,Pressable,Dimensions, ScrollView,Alert,ActivityIndicator} from "react-native";
 import { Ionicons, Entypo } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import MasonryList from "@react-native-seoul/masonry-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getCredentials } from "../../util/auth";
 
 
 const CATEGORIES = ["All","Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
@@ -82,14 +83,21 @@ const ClosetCard = React.memo(
   }
 );
 
+// API Configuration
+const API_ENDPOINT = "https://1ag2u91ezb.execute-api.us-east-2.amazonaws.com/production/s3";
+
 export default function ClosetPage() {
   const [likedOutfits, setLikedOutfits] = useState<number[]>([]);
   const [userImages, setUserImages] = useState<ClosetDataItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>("All");
-  const [outfits2, setOutfits] = useState<Outfit[]>([]);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // User authentication state
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userToken, setUserToken] = useState<string | null>(null);
 
 const initialLocalData: ClosetDataItem[] = [
     { id: 11, source: require("../../assets/images/hoodie.png"), type: "local", category: "Tops" },
@@ -107,11 +115,23 @@ const initialLocalData: ClosetDataItem[] = [
 
   useEffect(() => {
     loadData();
+    loadUserCredentials();
   }, []);
 
   useEffect (() => {
-    saveData(); 
+    saveData();
   }, [userImages,likedOutfits,localItems]);
+
+  // Load user credentials
+  const loadUserCredentials = async () => {
+    const creds = await getCredentials();
+    if (creds) {
+      setUserId(creds.accessToken); // This is actually the UUID
+      setUserToken(creds.uuid); // This is actually the Access Token
+    } else {
+      console.warn("No credentials found. User is not logged in.");
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -156,6 +176,63 @@ const toggleLike = useCallback((outfitId: number) => {
          );
         }, []); // <-- Add empty dependency array
 
+  // Upload image to S3 via API
+  const uploadImage = async (base64Image: string, mimeType: string) => {
+    setModalVisible(false);
+    setIsLoading(true);
+
+    if (!userId || !userToken) {
+      Alert.alert("Error", "You are not logged in. Please restart the app.");
+      setIsLoading(false);
+      return;
+    }
+
+    const body = {
+      user_id: userId,
+      image: base64Image,
+      filetype: mimeType || "image/jpeg",
+    };
+
+    try {
+      const response = await fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: userToken,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          responseData.message ||
+            "Upload failed with status: " + response.status
+        );
+      }
+
+      Alert.alert("Success!", "Your item has been added.");
+
+      // Also add to local state for immediate display
+      const newItem: ClosetDataItem = {
+        id: Date.now(),
+        source: { uri: `data:${mimeType};base64,${base64Image}` },
+        type: "user",
+        category: "User Upload",
+      };
+      setUserImages([...userImages, newItem]);
+    } catch (error) {
+      console.error("Upload error:", error);
+      Alert.alert(
+        "Upload Failed",
+        error instanceof Error ? error.message : "Could not upload image."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   async function pickImage() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -163,19 +240,17 @@ const toggleLike = useCallback((outfitId: number) => {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [4, 4],
-      quality: 1,
+      quality: 0.8,
+      base64: true,
     });
     if (!result.canceled && result.assets?.length > 0) {
-     const newItem: ClosetDataItem = {
-        id: Date.now(), // Unique ID
-        source: { uri: result.assets[0].uri },
-        type: "user",
-        category: "User Upload", // Assign to the "User Upload" category
-      };
-      setUserImages([...userImages, newItem]);
+      const asset = result.assets[0];
+      if (asset.base64 && asset.mimeType) {
+        await uploadImage(asset.base64, asset.mimeType);
+      }
     }
   }
 
@@ -188,17 +263,14 @@ const toggleLike = useCallback((outfitId: number) => {
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [4, 4],
-      quality: 1,
+      quality: 0.8,
+      base64: true,
     });
     if (!result.canceled && result.assets?.length > 0) {
-      // Create a full item object
-      const newItem: ClosetDataItem = {
-        id: Date.now(), // Unique ID
-        source: { uri: result.assets[0].uri },
-        type: "user",
-        category: "User Upload", // Assign to the "User Upload" category
-      };
-      setUserImages([...userImages, newItem]); // Add the object, not just the uri
+      const asset = result.assets[0];
+      if (asset.base64 && asset.mimeType) {
+        await uploadImage(asset.base64, asset.mimeType);
+      }
     }
   }
 
@@ -404,7 +476,20 @@ const allData: ClosetDataItem[] = useMemo(
       </Modal>
 
 
-      {/* --- ADD THIS NEW DELETE MODAL --- */}
+      {/* Loading Modal */}
+      <Modal
+        transparent={true}
+        animationType="none"
+        visible={isLoading}
+        onRequestClose={() => {}}
+      >
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#714054" />
+          <Text style={styles.loadingText}>Uploading...</Text>
+        </View>
+      </Modal>
+
+      {/* Delete Modal */}
       <Modal
         animationType="fade"
         transparent
@@ -421,7 +506,7 @@ const allData: ClosetDataItem[] = useMemo(
               Are you sure you want to permanently delete this item? This action
               cannot be undone.
             </Text>
-            
+
             <View style={styles.deleteModalButtonRow}>
               <TouchableOpacity
                 style={[styles.deleteButton, styles.deleteButtonCancel]}
@@ -657,4 +742,16 @@ subtitleRow: {
   padding: 6,
   zIndex: 10, // make sure it stays on top of everything
 },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+  },
+  loadingText: {
+    color: "white",
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: "600",
+  },
 });
