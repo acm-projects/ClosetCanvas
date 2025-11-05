@@ -10,11 +10,12 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Alert,
+  Pressable,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 
 export default function SignupScreen() {
   const [email, setEmail] = useState("");
@@ -25,6 +26,8 @@ export default function SignupScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [atConfirmation, setAtConfirmation] = useState(false);
   const [confirmationCode, setConfirmationCode] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
   const router = useRouter();
 
   const [date, setDate] = useState<Date | null>(null);
@@ -327,56 +330,78 @@ export default function SignupScreen() {
           />
           <Text style={styles.title}>Sign Up</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Name"
-            placeholderTextColor="#8B7A82"
-            value={name}
-            onChangeText={setName}
-          />
+          <View style={styles.inputContainer}>
+            <Feather name="user" size={20} color="#555" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Name"
+              placeholderTextColor="#8B7A82"
+              value={name}
+              onChangeText={setName}
+            />
+          </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Phone Number (10 digits)"
-            placeholderTextColor="#8B7A82"
-            value={phoneNumber}
-            keyboardType="phone-pad"
-            maxLength={10}
-            onChangeText={setPhoneNumber}
-          />
+          <View style={styles.inputContainer}>
+            <Feather name="phone" size={20} color="#555" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Phone Number (10 digits)"
+              placeholderTextColor="#8B7A82"
+              value={phoneNumber}
+              keyboardType="phone-pad"
+              maxLength={10}
+              onChangeText={setPhoneNumber}
+            />
+          </View>
 
-          <TouchableOpacity style={styles.input} onPress={showDatePicker}>
+          <TouchableOpacity style={styles.inputContainer} onPress={showDatePicker}>
+            <Feather name="calendar" size={20} color="#555" style={styles.icon} />
             <Text
               style={{
+                flex: 1,
                 color: date ? "#3C2332" : "#8B7A82",
                 paddingVertical: Platform.OS === "ios" ? 10 : 5,
+                fontSize: 16,
               }}
             >
               {date ? date.toLocaleDateString() : "Select your birthdate"}
             </Text>
           </TouchableOpacity>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#8B7A82"
-            value={email}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            onChangeText={setEmail}
-          />
+          <View style={styles.inputContainer}>
+            <Feather name="mail" size={20} color="#555" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#8B7A82"
+              value={email}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              onChangeText={setEmail}
+            />
+          </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#8B7A82"
-            secureTextEntry
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              validatePassword(text);
-            }}
-          />
+          <View style={styles.inputContainer}>
+            <Feather name="lock" size={20} color="#555" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="#8B7A82"
+              secureTextEntry={!isPasswordVisible}
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                validatePassword(text);
+              }}
+            />
+            <Pressable onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
+              <Feather
+                name={isPasswordVisible ? "eye" : "eye-off"}
+                size={20}
+                color="#555"
+              />
+            </Pressable>
+          </View>
 
           {/* Password Requirements Indicator */}
           {password.length > 0 && (
@@ -424,14 +449,24 @@ export default function SignupScreen() {
             </View>
           )}
 
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            placeholderTextColor="#8B7A82"
-            secureTextEntry
-            value={secondpassword}
-            onChangeText={setSecondPassword}
-          />
+          <View style={styles.inputContainer}>
+            <Feather name="lock" size={20} color="#555" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Confirm Password"
+              placeholderTextColor="#8B7A82"
+              secureTextEntry={!isConfirmPasswordVisible}
+              value={secondpassword}
+              onChangeText={setSecondPassword}
+            />
+            <Pressable onPress={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}>
+              <Feather
+                name={isConfirmPasswordVisible ? "eye" : "eye-off"}
+                size={20}
+                color="#555"
+              />
+            </Pressable>
+          </View>
 
           <TouchableOpacity
             style={styles.button}
@@ -471,15 +506,18 @@ export default function SignupScreen() {
             style={{ width: 150, height: 150, marginBottom: 10 }}
           />
           <Text style={styles.title}>Confirm Code</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Confirmation Code"
-            placeholderTextColor="#8B7A82"
-            value={confirmationCode}
-            keyboardType="phone-pad"
-            maxLength={10}
-            onChangeText={setConfirmationCode}
-          />
+          <View style={styles.inputContainer}>
+            <Feather name="key" size={20} color="#555" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Confirmation Code"
+              placeholderTextColor="#8B7A82"
+              value={confirmationCode}
+              keyboardType="phone-pad"
+              maxLength={10}
+              onChangeText={setConfirmationCode}
+            />
+          </View>
           <TouchableOpacity
             style={styles.button}
             onPress={() => handleConfirmation()}
@@ -565,15 +603,25 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#3C2332", // Dark maroon
   },
-  input: {
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     width: "85%",
-    backgroundColor: "#FFF",
-    borderWidth: 1,
-    borderColor: "#AB8C96", // Light maroon border
-    padding: 10,
+    borderBottomWidth: 1,
+    borderColor: "#000000ff",
+    paddingVertical: 5,
     marginBottom: 15,
-    borderRadius: 8,
-    justifyContent: "center",
+    borderRadius: 5,
+  },
+  icon: {
+    marginRight: 10,
+    marginLeft: 5,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 5,
+    fontSize: 16,
+    borderWidth: 0,
   },
   passwordRequirements: {
     width: "85%",

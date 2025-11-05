@@ -9,14 +9,19 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
+import Checkbox from "expo-checkbox";
+import { Feather } from "@expo/vector-icons";
 import { saveCredentials, getCredentials } from "../util/auth.js";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const router = useRouter();
 
   React.useEffect(() => {
@@ -162,22 +167,52 @@ export default function LoginScreen() {
 
         <Text style={styles.title}>Login</Text>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor="#8B7A82"
-          value={email}
-          onChangeText={(text) => setEmail(text)}
-        />
+        <View style={styles.inputContainer}>
+          <Feather name="mail" size={20} color="#555" style={styles.icon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            placeholderTextColor="#8B7A82"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={(text) => setEmail(text)}
+          />
+        </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#8B7A82"
-          secureTextEntry
-          value={password}
-          onChangeText={(text) => setPassword(text)}
-        />
+        <View style={styles.inputContainer}>
+          <Feather name="lock" size={20} color="#555" style={styles.icon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor="#8B7A82"
+            secureTextEntry={!isPasswordVisible}
+            value={password}
+            onChangeText={(text) => setPassword(text)}
+          />
+          <Pressable onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
+            <Feather
+              name={isPasswordVisible ? "eye" : "eye-off"}
+              size={20}
+              color="#555"
+            />
+          </Pressable>
+        </View>
+
+        <View style={styles.optionsContainer}>
+          <View style={styles.rememberMeContainer}>
+            <Checkbox
+              style={styles.checkbox}
+              value={rememberMe}
+              onValueChange={setRememberMe}
+              color={rememberMe ? "#714054" : undefined}
+            />
+            <Text style={styles.rememberMeText}>Remember Me</Text>
+          </View>
+          <TouchableOpacity>
+            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity style={styles.button} onPress={handleLogin}>
           <Text style={styles.buttonText}>Submit</Text>
@@ -186,7 +221,7 @@ export default function LoginScreen() {
         <View style={styles.signupContainer}>
           <Text style={styles.text}>Don&apos;t have an account?</Text>
           <Link href="/SignUp" asChild>
-            <TouchableOpacity style={styles.button2}>
+            <TouchableOpacity>
               <Text style={styles.buttonText2}>Sign Up</Text>
             </TouchableOpacity>
           </Link>
@@ -262,13 +297,49 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#3C2332", // Dark maroon
   },
-  input: {
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     width: "85%",
-    backgroundColor: "#FFF",
-    borderWidth: 1,
-    borderColor: "#AB8C96", // Light maroon border
-    padding: 10,
+    borderBottomWidth: 1,
+    borderColor: "#000000ff",
+    paddingVertical: 5,
     marginBottom: 15,
-    borderRadius: 8,
+    borderRadius: 5,
+  },
+  icon: {
+    marginRight: 10,
+    marginLeft: 5,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 5,
+    fontSize: 16,
+    borderWidth: 0,
+  },
+  optionsContainer: {
+    width: "85%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  rememberMeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  checkbox: {
+    marginRight: 8,
+    width: 18,
+    height: 18,
+  },
+  rememberMeText: {
+    fontSize: 13,
+    color: "#333",
+  },
+  forgotPasswordText: {
+    fontSize: 13,
+    color: "#3C2332",
+    fontWeight: "600",
   },
 });
