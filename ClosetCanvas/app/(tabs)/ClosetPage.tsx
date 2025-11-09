@@ -1,5 +1,16 @@
-import React, { useState,useEffect,useMemo,useCallback } from "react";
-import { View,Text,Modal,StyleSheet,Image, TouchableOpacity,Pressable,Dimensions, ScrollView,Alert,ActivityIndicator} from "react-native";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { 
+  View, 
+  Text, 
+  Modal, 
+  StyleSheet, 
+  Image, 
+  TouchableOpacity, 
+  Pressable, 
+  ScrollView, 
+  Alert, 
+  ActivityIndicator
+} from "react-native";
 import { Ionicons, Entypo } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -7,11 +18,76 @@ import MasonryList from "@react-native-seoul/masonry-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCredentials } from "../../util/auth";
 
+// API endpoint for S3
+const API_ENDPOINT = "https://1ag2u91ezb.execute-api.us-east-2.amazonaws.com/production/s3";
 
-const CATEGORIES = ["All","Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
-  type ClosetItem = {
-  id: number;
-  uri: string;
+// API Types
+interface S3ImageItem {
+  item_id: string;
+  user_id: string;
+  s3_key: string;
+  mainColor: number;
+  accentColor?: number;
+  clothingType: number;
+  status: string;
+}
+
+interface ClosetDataItem extends S3ImageItem {
+  source?: { uri: string } | number; // Can be require(...) or { uri: string }
+}
+
+const CATEGORIES = ["All", "Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
+
+// --- Fetch user's clothing items from S3 ---
+const fetchUserImagesFromS3 = async (userId: string, token: string): Promise<ClosetDataItem[]> => {
+  if (!userId || !token) {
+    console.warn("User not authenticated; skipping S3 fetch");
+    return [];
+  }
+
+  try {
+    console.log("[GET] Fetching user images from S3...");
+    console.log(`[DEBUG] UserId: ${userId}`);
+    console.log(`[DEBUG] Token present: ${!!token}`);
+    
+    console.log("[DEBUG] Making request to:", `${API_ENDPOINT}/${userId}`);
+    
+    const response = await fetch(`${API_ENDPOINT}/${userId}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": token,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[ERROR] Response status: ${response.status}`);
+      console.error(`[ERROR] Response headers:`, response.headers);
+      console.error(`[ERROR] Response body:`, errorText);
+      throw new Error(`Failed to fetch images: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log("[GET] S3 images response:", data);
+
+    if (Array.isArray(data)) {
+      return data.map((item: S3ImageItem) => ({
+        ...item,
+        mainColor: item.mainColor || 1,
+        clothingType: item.clothingType || 0,
+        status: item.status || "PROCESSED",
+        source: item.s3_key ? { uri: `${API_ENDPOINT}/image/${item.s3_key}` } : undefined
+      }));
+    } else {
+      console.warn("Response data is not an array:", data);
+      return [];
+    }
+  } catch (err) {
+    console.error("Error fetching from S3:", err);
+    Alert.alert("Error", "Failed to load your closet items");
+    return [];
+  }
 };
 
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -26,16 +102,13 @@ const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 
-type Outfit = {
-  id: number;
-  items: ClosetItem[];
-};
-type ClosetDataItem = {
-  id: number;
-  source: any; // can be require(...) or { uri: string }
-  type: "local" | "user";
-  category: string
-};
+// Component Props interfaces
+interface ClosetCardProps {
+  item: ClosetDataItem;
+  isLiked: boolean;
+  onToggleLike: (itemId: string) => void;
+  onDelete: (itemId: string) => void;
+}
 
 // We use React.memo to prevent re-renders unless its props (item, isLiked, onToggleLike) change
 const ClosetCard = React.memo(
@@ -47,29 +120,43 @@ const ClosetCard = React.memo(
   }: {
     item: ClosetDataItem;
     isLiked: boolean;
-    onToggleLike: (id: number) => void;
-    onDelete: (id:number) => void; 
+    onToggleLike: (itemId: string) => void;
+    onDelete: (itemId: string) => void; 
   }) => {
     const [randomHeight] = useState(
       Math.floor(Math.random() * 100) + 180
     );
 
-    const handleLongPress = ()=> {
-        onDelete(item.id); 
-      }; 
-    
+    const handleLongPress = () => {
+      onDelete(item.item_id);
+    }; 
+
+    // Convert clothingType to category name
+    const getCategory = (type: number) => {
+      switch(type) {
+        case 1: return "Tops";
+        case 2: return "Bottoms";
+        case 3: return "Outerwear";
+        case 4: return "Full Body";
+        case 5: return "Footwear";
+        default: return "Other";
+      }
+    };
 
     return (
       <Pressable onLongPress={handleLongPress}>
       <View style={styles.card}>
-        <Image
-          source={item.source}
-          // We now use the stable height from our state
-          style={[styles.userImage, { height: randomHeight }]}
-        />
+        {item.source ? (
+          <Image
+            source={item.source}
+            style={[styles.userImage, { height: randomHeight }]}
+          />
+        ) : (
+          <View style={[styles.userImage, { height: randomHeight, backgroundColor: '#ccc' }]} />
+        )}
         <TouchableOpacity
           style={styles.heart}
-          onPress={() => onToggleLike(item.id)}
+          onPress={() => onToggleLike(item.item_id)}
         >
           <Ionicons
             name={isLiked ? "heart" : "heart-outline"}
@@ -83,55 +170,126 @@ const ClosetCard = React.memo(
   }
 );
 
-// API Configuration
-const API_ENDPOINT = "https://1ag2u91ezb.execute-api.us-east-2.amazonaws.com/production/s3";
+// API Configuration is defined at the top
 
 export default function ClosetPage() {
-  const [likedOutfits, setLikedOutfits] = useState<number[]>([]);
+  const [likedOutfits, setLikedOutfits] = useState<string[]>([]); // Changed to string for item_id
   const [userImages, setUserImages] = useState<ClosetDataItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // User authentication state
   const [userId, setUserId] = useState<string | null>(null);
   const [userToken, setUserToken] = useState<string | null>(null);
 
+  // Convert clothing type number to category name
+  const getCategory = (type: number): string => {
+    switch(type) {
+      case 1: return "Tops";
+      case 2: return "Bottoms";
+      case 3: return "Outerwear";
+      case 4: return "Full Body";
+      case 5: return "Footwear";
+      default: return "Other";
+    }
+  };
+
 const initialLocalData: ClosetDataItem[] = [
-    { id: 11, source: require("../../assets/images/hoodie.png"), type: "local", category: "Tops" },
-    { id: 12, source: require("../../assets/images/pants.png"), type: "local", category: "Pants" },
-    { id: 13, source: require("../../assets/images/shoes.png"), type: "local", category: "Shoes" },
-    { id: 21, source: require("../../assets/images/dress.png"), type: "local", category: "Dresses" },
-    { id: 31, source: require("../../assets/images/tshirt.png"), type: "local", category: "Tops" },
-    { id: 32, source: require("../../assets/images/shorts.png"), type: "local", category: "Pants" },
-    { id: 33, source: require("../../assets/images/sneakers.png"), type: "local", category: "Shoes" },
-    // Add any other local items here, e.g.:
-    // { id: 41, source: require("../../assets/images/hat.png"), type: "local", category: "Acessories" },
-  ];
+  {
+    item_id: "local-11",
+    user_id: "local",
+    s3_key: "",
+    mainColor: 1, // black
+    clothingType: 3, // outerwear for hoodie
+    status: "PROCESSED",
+    source: require("../../assets/images/hoodie.png")
+  },
+  {
+    item_id: "local-12",
+    user_id: "local",
+    s3_key: "",
+    mainColor: 4, // charcoal
+    clothingType: 2, // bottoms for pants
+    status: "PROCESSED",
+    source: require("../../assets/images/pants.png")
+  },
+  {
+    item_id: "local-13",
+    user_id: "local",
+    s3_key: "",
+    mainColor: 1, // black
+    clothingType: 5, // footwear
+    status: "PROCESSED",
+    source: require("../../assets/images/shoes.png")
+  }
+];
   
   const [localItems, setLocalItems] = useState<ClosetDataItem[]>(initialLocalData);
 
+  // fetchUserImagesFromS3 is defined at the top of the file
+
   useEffect(() => {
-    loadData();
-    loadUserCredentials();
+    const init = async () => {
+      await loadUserCredentials();
+      await loadData();
+    };
+    init();
   }, []);
 
-  useEffect (() => {
+  useEffect(() => {
     saveData();
-  }, [userImages,likedOutfits,localItems]);
+  }, [userImages, likedOutfits, localItems]);
 
   // Load user credentials
   const loadUserCredentials = async () => {
     const creds = await getCredentials();
     if (creds) {
-      setUserId(creds.accessToken); // This is actually the UUID
-      setUserToken(creds.uuid); // This is actually the Access Token
+      // Log raw credentials (truncated) for debugging
+      try {
+        console.log("[DEBUG] Raw credentials:", {
+          uuid: creds.uuid ? (creds.uuid.substring(0, 10) + "...") : "null",
+          accessToken: creds.accessToken ? (creds.accessToken.substring(0, 10) + "...") : "null",
+        });
+      } catch (e) {
+        console.log("[DEBUG] Raw credentials logging failed", e);
+      }
+      // Extract the actual user ID from the JWT token
+      try {
+        const tokenParts = creds.uuid.split('.');
+        // Decode payload safely (atob may not exist in all environments)
+        let decoded = '';
+        try {
+          decoded = typeof atob === 'function' ? atob(tokenParts[1]) : Buffer.from(tokenParts[1], 'base64').toString('utf8');
+        } catch (e) {
+          // Fallback: try globalThis.atob
+          try { decoded = (globalThis as any).atob(tokenParts[1]); } catch (e2) { decoded = ''; }
+        }
+        const payload = decoded ? JSON.parse(decoded) : {};
+        const actualUserId = payload.sub; // Using sub as the unique identifier
+        
+        setUserId(actualUserId);
+        setUserToken(creds.accessToken);
+        console.log("[DEBUG] Extracted user ID:", actualUserId);
+        
+        if (actualUserId) {
+          await fetchUserImagesFromS3(actualUserId, creds.accessToken);
+        } else {
+          console.error("[ERROR] Could not extract user ID from token");
+        }
+      } catch (error) {
+        console.error("[ERROR] Failed to parse user ID from token:", error);
+        setUserId(creds.uuid);
+        setUserToken(creds.accessToken);
+        await fetchUserImagesFromS3(creds.uuid, creds.accessToken);
+      }
     } else {
       console.warn("No credentials found. User is not logged in.");
     }
   };
+
 
   const loadData = async () => {
     try {
@@ -168,15 +326,14 @@ const initialLocalData: ClosetDataItem[] = [
     }
   };
 
-const toggleLike = useCallback((outfitId: number) => {
+  // Updated to use string IDs
+  const toggleLike = useCallback((itemId: string) => {
     setLikedOutfits((prev) =>
-      prev.includes(outfitId)
-       ? prev.filter((id) => id !== outfitId)
-         : [...prev, outfitId]
-         );
-        }, []); // <-- Add empty dependency array
-
-  // Upload image to S3 via API
+      prev.includes(itemId)
+        ? prev.filter((id) => id !== itemId)
+        : [...prev, itemId]
+    );
+  }, []);  // Upload image to S3 via API
   const uploadImage = async (base64Image: string, mimeType: string) => {
     setModalVisible(false);
     setIsLoading(true);
@@ -194,16 +351,35 @@ const toggleLike = useCallback((outfitId: number) => {
     };
 
     try {
+      console.log("[DEBUG] Making upload request to:", API_ENDPOINT);
+      console.log("[DEBUG] Request headers (truncated):", {
+        "Content-Type": "application/json",
+        "Authorization": userToken ? userToken.substring(0, 10) + "..." : "null"
+      });
+      console.log("[DEBUG] Request body size:", base64Image ? base64Image.length : 0, "characters");
+
       const response = await fetch(API_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: userToken,
+          "Authorization": userToken,
         },
         body: JSON.stringify(body),
       });
 
-      const responseData = await response.json();
+      console.log("[DEBUG] Response status:", response.status);
+      try {
+        const headersObj: Record<string, string> = {};
+        response.headers && response.headers.forEach && response.headers.forEach((v: string, k: string) => { headersObj[k] = v; });
+        console.log("[DEBUG] Response headers:", headersObj);
+      } catch (e) {
+        console.log("[DEBUG] Could not read response headers", e);
+      }
+
+      const responseText = await response.text();
+      console.log("[DEBUG] Response body:", responseText);
+      let responseData = null;
+      try { responseData = responseText ? JSON.parse(responseText) : null; } catch (e) { responseData = null; }
 
       if (!response.ok) {
         throw new Error(
@@ -216,10 +392,13 @@ const toggleLike = useCallback((outfitId: number) => {
 
       // Also add to local state for immediate display
       const newItem: ClosetDataItem = {
-        id: Date.now(),
-        source: { uri: `data:${mimeType};base64,${base64Image}` },
-        type: "user",
-        category: "User Upload",
+        item_id: Date.now().toString(),
+        user_id: userId,
+        s3_key: `${Date.now()}.jpg`,
+        mainColor: 1, // default to black
+        clothingType: 0, // default to other
+        status: "UPLOADING",
+        source: { uri: `data:${mimeType};base64,${base64Image}` }
       };
       setUserImages([...userImages, newItem]);
     } catch (error) {
@@ -233,20 +412,34 @@ const toggleLike = useCallback((outfitId: number) => {
     }
   };
 
+  // --- Fetch user images from S3 ---
+interface S3ImageItem {
+  item_id: string;
+  user_id: string;
+  s3_key: string;
+  mainColor: number;
+  accentColor?: number;
+  clothingType: number;
+  status: string;
+}
+
+
   async function pickImage() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      alert("Permission to access media library is required!");
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permissionResult.granted === false) {
+      alert("Permission to access camera roll is required!");
       return;
     }
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 4],
       quality: 0.8,
       base64: true,
     });
-    if (!result.canceled && result.assets?.length > 0) {
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
       if (asset.base64 && asset.mimeType) {
         await uploadImage(asset.base64, asset.mimeType);
@@ -255,18 +448,20 @@ const toggleLike = useCallback((outfitId: number) => {
   }
 
   async function takePhoto() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (permissionResult.granted === false) {
       alert("Permission to access camera is required!");
       return;
     }
+
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [4, 4],
       quality: 0.8,
       base64: true,
     });
-    if (!result.canceled && result.assets?.length > 0) {
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
       if (asset.base64 && asset.mimeType) {
         await uploadImage(asset.base64, asset.mimeType);
@@ -278,21 +473,17 @@ const toggleLike = useCallback((outfitId: number) => {
     setModalVisible(true);
   }
 
-  function onTakePhoto() {
-    takePhoto();
-    setModalVisible(false);
+  async function onTakePhoto() {
+    await takePhoto();
   }
 
-  function onPickImage() {
-    pickImage();
-    setModalVisible(false);
+  async function onPickImage() {
+    await pickImage();
   }
 
-  // --- DELETE your old handleDelete and ADD these three functions ---
-
-  // This function just opens the modal
-  const handleDelete = useCallback((id: number) => {
-    setItemToDelete(id);
+  // Updated to use string IDs
+  const handleDelete = useCallback((itemId: string) => {
+    setItemToDelete(itemId);
     setDeleteModalVisible(true);
   }, []);
 
@@ -300,12 +491,10 @@ const toggleLike = useCallback((outfitId: number) => {
   const confirmDelete = () => {
     if (itemToDelete === null) return;
 
-    // --- THIS IS THE FIX ---
     // Remove from user images
-    setUserImages((prev) => prev.filter((item) => item.id !== itemToDelete));
+    setUserImages((prev) => prev.filter((item) => item.item_id !== itemToDelete));
     // Remove from local items
-    setLocalItems((prev) => prev.filter((item) => item.id !== itemToDelete));
-    // -----------------------
+    setLocalItems((prev) => prev.filter((item) => item.item_id !== itemToDelete));
 
     // Also remove from liked outfits
     setLikedOutfits((prev) => prev.filter((likedId) => likedId !== itemToDelete));
@@ -330,30 +519,32 @@ const allData: ClosetDataItem[] = useMemo(
   );
 
   const filteredData = useMemo(() => {
-     if (activeCategory === "All") {
+    if (activeCategory === "All") {
       return allData;
-     }
+    }
     
-    // --- ADD THIS "if" BLOCK ---
-     if (activeCategory === "Favorites") {
-      // Return items whose ID is in the likedOutfits array
-     return allData.filter((item) => likedOutfits.includes(item.id));
-     }
-    // -------------------------
+    if (activeCategory === "Favorites") {
+      return allData.filter((item) => likedOutfits.includes(item.item_id));
+    }
 
-     // This handles "Tops", "Pants", etc.
-    
-     return allData.filter((item) => item.category === activeCategory);
+    // Convert category name to clothing type number
+    const typeMap: Record<string, number> = {
+      "Tops": 1,
+      "Pants": 2,
+      "Jackets": 3,
+      "Dresses": 4,
+      "Shoes": 5
+    };
 
-  // --- AND ADD 'likedOutfits' TO THE DEPENDENCY ARRAY ---
-   }, [allData, activeCategory, likedOutfits]);
+    const typeNumber = typeMap[activeCategory] || 0;
+    return allData.filter((item) => item.clothingType === typeNumber);
+  }, [allData, activeCategory, likedOutfits]);
 
   const renderMasonryItem = useCallback(
     ({ item }: { item: unknown }) => {
       const typedItem = item as ClosetDataItem;
-      const isLiked = likedOutfits.includes(typedItem.id);
+      const isLiked = likedOutfits.includes(typedItem.item_id);
 
-      // Render your new, stable component
       return (
         <ClosetCard
           item={typedItem}
@@ -363,7 +554,7 @@ const allData: ClosetDataItem[] = useMemo(
         />
       );
     },
-    [likedOutfits, toggleLike, handleDelete] // Re-creates the function if likes change
+    [likedOutfits, toggleLike, handleDelete]
   );
 
 
@@ -422,12 +613,11 @@ const allData: ClosetDataItem[] = useMemo(
   data={filteredData}
   keyExtractor={(item: unknown) => {
     const typedItem = item as ClosetDataItem;
-    return typedItem.id.toString();
+    return typedItem.item_id;
   }}
   numColumns={2}
   showsVerticalScrollIndicator={false}
   contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 100 }}
-  
   renderItem={renderMasonryItem}
 />
 
