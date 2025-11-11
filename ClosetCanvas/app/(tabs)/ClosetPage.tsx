@@ -38,7 +38,7 @@ interface ClosetDataItem extends S3ImageItem {
 
 const CATEGORIES = ["All", "Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
 
-// --- Fetch user's clothing items from S3 ---
+/*// --- Fetch user's clothing items from S3 ---
 const fetchUserImagesFromS3 = async (userId: string, token: string): Promise<ClosetDataItem[]> => {
   if (!userId || !token) {
     console.warn("User not authenticated; skipping S3 fetch");
@@ -51,6 +51,7 @@ const fetchUserImagesFromS3 = async (userId: string, token: string): Promise<Clo
     console.log(`[DEBUG] Token present: ${!!token}`);
     
     console.log("[DEBUG] Making request to:", `${API_ENDPOINT}/${userId}`);
+    
     
     const response = await fetch(`${API_ENDPOINT}/${userId}`, {
       method: "GET",
@@ -89,6 +90,7 @@ const fetchUserImagesFromS3 = async (userId: string, token: string): Promise<Clo
     return [];
   }
 };
+*/
 
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   All: "apps-outline",
@@ -196,6 +198,7 @@ export default function ClosetPage() {
       default: return "Other";
     }
   };
+  
 
 const initialLocalData: ClosetDataItem[] = [
   {
@@ -233,8 +236,7 @@ const initialLocalData: ClosetDataItem[] = [
 
   useEffect(() => {
     const init = async () => {
-      await loadUserCredentials();
-      await loadData();
+      await loadUserCredentials(); // Always fetch from backend on app start
     };
     init();
   }, []);
@@ -272,7 +274,10 @@ const initialLocalData: ClosetDataItem[] = [
         setUserToken(token);
         console.log("[DEBUG] Extracted user ID:", actualUserId);
         if (actualUserId) {
-          await fetchUserImagesFromS3(actualUserId, token);
+          //const fetchedImages = await fetchUserImagesFromS3(actualUserId, token);
+          //setUserImages(fetchedImages);
+          // Cache the latest fetched images in AsyncStorage
+          // await AsyncStorage.setItem("userImages", JSON.stringify(fetchedImages));
         } else {
           console.error("[ERROR] Could not extract user ID from token");
         }
