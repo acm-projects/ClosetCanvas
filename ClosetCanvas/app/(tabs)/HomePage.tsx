@@ -1,4 +1,20 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+
+function getWeatherSummary(temp: number, description: string, wind: number): string {
+  if (temp >= 68 && temp <= 80 && !description.includes("rain")) {
+    return "Perfect Day";
+  } else if (temp < 50) {
+    return "Cold Day";
+  } else if (temp > 85) {
+    return "Hot Day";
+  } else if (description.includes("rain")) {
+    return "Rainy Day";
+  } else if (wind > 15) {
+    return "Windy";
+  } else {
+    return "Normal Day";
+  }
+}
 import {
   View,
   Text,
@@ -96,7 +112,7 @@ export default function HomePage() {
 
    const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
+  const [weather, setWeather] = useState<{ temp: number; condition: string; wind: number } | null>(null);
 
   useEffect(() => {
      async function getCurrentLocationAndWeather() {
@@ -127,7 +143,23 @@ export default function HomePage() {
         setWeather({
           temp: data.main.temp,
           condition: data.weather[0].main,
+          wind: data.wind.speed,
         });
+  function getWeatherSummary(temp, description, wind) {
+    if (temp >= 20 && temp <= 27 && !description.includes("rain")) {
+      return "Perfect Day 🌞";
+    } else if (temp < 10) {
+      return "Cold Day 🧣";
+    } else if (temp > 30) {
+      return "Hot Day 🥵";
+    } else if (description.includes("rain")) {
+      return "Rainy Day ☔";
+    } else if (wind > 15) {
+      return "Windy 🌬️";
+    } else {
+      return "Normal Day 🌤️";
+    }
+  }
       } catch (err) {
         console.error(err);
         setErrorMsg("Failed to get location or weather");
@@ -387,7 +419,9 @@ export default function HomePage() {
     ) : weather ? (
       <>
         <Text style={styles.weatherText}>{weather.condition}</Text>
-        <Text style={styles.weatherSub}>{Math.round(weather.temp)}°F</Text>
+        <Text style={styles.weatherSub}>
+          {Math.round(weather.temp)}°F - {getWeatherSummary(weather.temp, weather.condition.toLowerCase(), weather.wind)}
+        </Text>
       </>
     ) : (
       <>
