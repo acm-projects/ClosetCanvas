@@ -138,7 +138,7 @@ export default function ClosetPage() {
 
   const loadUserCredentials = async () => {
     const creds = (await getCredentials()) as Credentials;
-    console.log("[Creds] getCredentials() →", creds);
+    //console.log("[Creds] getCredentials() →", creds);
     // ✅ use uuid as your API's user_id
     if (creds?.uuid) setUserId(creds.accessToken);
     else console.warn("[Creds] No credentials found. User not logged in.");
