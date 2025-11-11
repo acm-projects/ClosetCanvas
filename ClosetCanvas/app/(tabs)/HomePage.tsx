@@ -17,9 +17,12 @@ import { Ionicons, Entypo } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 
 const { width, height } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.3; // How far to swipe to trigger action
+const apiKey = Constants.expoConfig.extra.OPENWEATHER_API_KEY;;
 
 // 1. DEFINE YOUR OUTFITS
 // Each outfit is an *array* of clothing items.
@@ -90,6 +93,50 @@ export default function HomePage() {
   const [outfitStack, setOutfitStack] = useState(outfitsData);
   const [likeModalVisible, setLikeModalVisible] = useState(false);
   const [swipedItem, setSwipedItem] = useState<ClosetDataItem[] | null>(null);
+
+   const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
+
+  useEffect(() => {
+     async function getCurrentLocationAndWeather() {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setErrorMsg("Permission to access location was denied");
+          return;
+        }
+
+        let loc = await Location.getCurrentPositionAsync({});
+        setLocation(loc);
+
+        // Fetch weather using lat/lon
+        const lat = loc.coords.latitude;
+        const lon = loc.coords.longitude;
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!res.ok) {
+          console.error("OpenWeather API error:", data);
+          setErrorMsg("Failed to load weather data");
+          return;
+        }
+
+        setWeather({
+          temp: data.main.temp,
+          condition: data.weather[0].main,
+        });
+      } catch (err) {
+        console.error(err);
+        setErrorMsg("Failed to get location or weather");
+      }
+    }
+
+    getCurrentLocationAndWeather();
+  }, []);
+
 
   // Animated values for the top card
   const pan = useRef(new Animated.ValueXY()).current;
@@ -330,12 +377,27 @@ export default function HomePage() {
       >
         {/* Weather Section */}
         <View style={styles.weatherCard}>
-          <Ionicons name="sunny-outline" size={40} color="#F9E3B4" />
-          <View>
-            <Text style={styles.weatherText}>Sunny</Text>
-            <Text style={styles.weatherSub}>72° - Perfect weather</Text>
-          </View>
-        </View>
+  <Ionicons name="cloud-outline" size={40} color="#F9E3B4" />
+  <View>
+    {errorMsg ? (
+      <>
+        <Text style={styles.weatherText}>Error</Text>
+        <Text style={styles.weatherSub}>{errorMsg}</Text>
+      </>
+    ) : weather ? (
+      <>
+        <Text style={styles.weatherText}>{weather.condition}</Text>
+        <Text style={styles.weatherSub}>{Math.round(weather.temp)}°F</Text>
+      </>
+    ) : (
+      <>
+        <Text style={styles.weatherText}>Loading...</Text>
+        <Text style={styles.weatherSub}>Fetching weather</Text>
+      </>
+    )}
+  </View>
+</View>
+
 
         {/* Outfit Description */}
         <View style={styles.textSection}>
