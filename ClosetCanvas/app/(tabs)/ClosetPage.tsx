@@ -278,16 +278,6 @@ const toggleLike = useCallback((outfitId: number) => {
     setModalVisible(true);
   }
 
-  function onTakePhoto() {
-    takePhoto();
-    setModalVisible(false);
-  }
-
-  function onPickImage() {
-    pickImage();
-    setModalVisible(false);
-  }
-
   // --- DELETE your old handleDelete and ADD these three functions ---
 
   // This function just opens the modal
@@ -453,12 +443,12 @@ const allData: ClosetDataItem[] = useMemo(
           <Pressable style={styles.modalView} onPress={() => {}}>
             <Text style={styles.modalTitle}>Add to Closet</Text>
 
-            <TouchableOpacity style={styles.modalButton} onPress={onTakePhoto}>
+            <TouchableOpacity style={styles.modalButton} onPress={takePhoto}>
               <Ionicons name="camera" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Take Photo</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.modalButton} onPress={onPickImage}>
+            <TouchableOpacity style={styles.modalButton} onPress={pickImage}>
               <Ionicons name="image" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Choose from Library</Text>
             </TouchableOpacity>
