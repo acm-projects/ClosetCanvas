@@ -34,8 +34,8 @@ type GetClosetItemsResp = {
   user_id: string | null;
   count: number;
   items: Array<{
-    id?: string;       // our API sometimes returns "id"
-    item_id?: string;  // or "item_id"
+    id?: string;
+    item_id?: string;
     uri?: string | null;
     clothingType?: number | null;
   }>;
@@ -57,7 +57,8 @@ type GetOutfitsResp = {
 // -------- API endpoints ----------
 const API_BASE = "https://3a42g82o4d.execute-api.us-east-2.amazonaws.com/dev";
 const ITEMS_URL = `${API_BASE}/s3v2`;
-const OUTFITS_URL = `https://1dzpo66n78.execute-api.us-east-2.amazonaws.com/production/outfits`; // your working outfits endpoint
+const OUTFITS_URL = `https://1dzpo66n78.execute-api.us-east-2.amazonaws.com/production/outfits`;
+const CREATE_OUTFITS_URL = `https://nx736y3txb.execute-api.us-east-2.amazonaws.com/default/createOutfits`;
 
 // -------- helpers ----------
 const uuidToInt = (s: string): number => {
@@ -113,8 +114,8 @@ export default function HomePage() {
     (async () => {
       const creds = await getCredentials();
       console.log("[Home] getCredentials() →", creds);
-      // You said: creds.uuid is actually the Access Token in one place—
-      // here we’ll use `creds.uuid || creds.accessToken` and log for clarity.
+      // ⚠️ Auth stays exactly like your working code:
+      // we set userId to creds.accessToken
       const uid = creds?.uuid || creds?.accessToken || null;
       if (!uid) {
         console.warn("[Home] No user id found in credentials.");
@@ -125,14 +126,14 @@ export default function HomePage() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!userId) return;
-    (async () => {
+  // single reusable loader (used on first load and after createOutfits)
+  const loadOutfitStackForUser = useCallback(
+    async (uid: string) => {
+      setLoading(true);
       try {
-        setLoading(true);
         // 1) fetch items (for URIs)
         const itemsUrl = `${ITEMS_URL}?user_id=${encodeURIComponent(
-          userId
+          uid
         )}&signed=1&expiresIn=3600`;
         console.log("[Home] GET Items URL:", itemsUrl);
         const itemsRes = await fetch(itemsUrl);
@@ -142,7 +143,6 @@ export default function HomePage() {
         const itemsJson: GetClosetItemsResp = JSON.parse(itemsRaw || "{}");
         const itemsList = itemsJson?.items || [];
 
-        // Key by item id string for quick lookup
         const itemsById = new Map<
           string,
           { uri: string | null | undefined; clothingType?: number | null }
@@ -153,8 +153,8 @@ export default function HomePage() {
         }
         console.log("[Home] itemsById keys:", Array.from(itemsById.keys()).length);
 
-        // 2) fetch outfits (no color fields)
-        const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(userId)}`;
+        // 2) fetch outfits
+        const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(uid)}`;
         console.log("[Home] GET Outfits URL:", outfitsUrl);
         const outfitsRes = await fetch(outfitsUrl);
         const outfitsRaw = await outfitsRes.text();
@@ -163,17 +163,13 @@ export default function HomePage() {
         const outfitsJson: GetOutfitsResp = JSON.parse(outfitsRaw || "{}");
         const outfits = outfitsJson?.outfits || [];
 
-        // 3) Build outfitStack: ClosetDataItem[] per outfit
-        const built: ClosetDataItem[][] = outfits.map((o) => {
-          return o.items
+        // 3) build stack
+        const built: ClosetDataItem[][] = outfits.map((o) =>
+          o.items
             .map((oi) => {
               const meta = itemsById.get(oi.itemId);
               const uri = meta?.uri || null;
-
-              // If there’s no image yet for this item (e.g., missing S3 or expired URL),
-              // we can skip it to avoid empty images in the stack.
               if (!uri) return null;
-
               return {
                 id: uuidToInt(oi.itemId),
                 source: { uri },
@@ -181,20 +177,15 @@ export default function HomePage() {
                 category: mapClothingTypeToCategory(oi.clothingType),
               } as ClosetDataItem;
             })
-            .filter(Boolean) as ClosetDataItem[];
-        });
+            .filter(Boolean) as ClosetDataItem[]
+        );
 
-        // Only keep outfits that have at least one visible image
         const filtered = built.filter((arr) => arr.length > 0);
-
         console.log("[Home] Built outfits:", filtered.length);
         setOutfitStack(filtered);
-
-        // Persist for offline (optional)
         await AsyncStorage.setItem("outfitStack", JSON.stringify(filtered));
       } catch (e) {
         console.error("[Home] Failed to load outfits or items:", e);
-        // Fallback to cached stack if exists
         const cached = await AsyncStorage.getItem("outfitStack");
         if (cached) {
           try {
@@ -205,8 +196,49 @@ export default function HomePage() {
       } finally {
         setLoading(false);
       }
-    })();
-  }, [userId]);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (userId) loadOutfitStackForUser(userId);
+  }, [userId, loadOutfitStackForUser]);
+
+  // --------------------------------
+  //     CREATE OUTFITS WHEN EMPTY
+  // --------------------------------
+  const createOutfitsAndReload = useCallback(async () => {
+    if (!userId) return;
+    try {
+      console.log("[CreateOutfits] POST", CREATE_OUTFITS_URL);
+      const body = {
+        userId,               // ⚠️ Uses the user's UserID from state (your working auth)
+        style: "y2k",
+        numberOfOutfits: 3,
+        outfitTypes: [1, 2],
+      };
+      console.log("[CreateOutfits] body:", body);
+
+      const res = await fetch(CREATE_OUTFITS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const raw = await res.text();
+      console.log("[CreateOutfits] status:", res.status, "raw:", raw);
+      if (!res.ok) {
+        console.warn("[CreateOutfits] Failed to create outfits");
+      }
+
+      // after creation returns, pull latest stack
+      await loadOutfitStackForUser(userId);
+    } catch (e) {
+      console.error("[CreateOutfits] Error:", e);
+      // even if it fails, try to reload so user sees any existing outfits
+      if (userId) await loadOutfitStackForUser(userId);
+    }
+  }, [userId, loadOutfitStackForUser]);
 
   // --------------------------------
   //         SWIPE BEHAVIOR
@@ -280,8 +312,16 @@ export default function HomePage() {
     setLikeModalVisible(true);
   };
 
+  // 🔔 Trigger createOutfits when the stack becomes empty
   const removeTopCard = () => {
-    setOutfitStack((prev) => prev.slice(1));
+    setOutfitStack((prev) => {
+      const next = prev.slice(1);
+      if (next.length === 0) {
+        // call your createOutfits endpoint, then reload
+        createOutfitsAndReload();
+      }
+      return next;
+    });
     pan.setValue({ x: 0, y: 0 });
   };
 
@@ -322,7 +362,7 @@ export default function HomePage() {
           if (item.category === "Shoes") style = styles.imageShoes;
           if (item.category === "Dresses") style = styles.imageDress;
 
-          return <Image key={item.id} source={item.source} style={style} />;
+        return <Image key={item.id} source={item.source} style={style} />;
         })}
       </View>
 
