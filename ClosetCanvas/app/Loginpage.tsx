@@ -14,7 +14,7 @@ import {
 import { Link, useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import Checkbox from "expo-checkbox";
-import { Feather } from "@expo/vector-icons";
+import { Mail, Lock, Eye, EyeOff } from "lucide-react-native";
 import { saveCredentials, getCredentials } from "../util/auth.js";
 
 export default function LoginScreen() {
@@ -26,27 +26,36 @@ export default function LoginScreen() {
 
   React.useEffect(() => {
     const checkCredentials = async () => {
-      const creds = await getCredentials();
-      if (creds) {
-        router.push("/(tabs)/HomePage");
-        console.log("Credentials found, navigating to HomePage.");
+      const userData = await getCredentials();
+     if (userData) {
+        if (userData.hasCompletedQuestionnaire) {
+          console.log("Credentials found, navigating to HomePage.");
+          router.push("/(tabs)/HomePage");
+        } else {
+          console.log("Credentials found, but questionnaire incomplete. Navigating to Questionnaire.");
+          router.push("/QuestionarePage"); 
+        }
+      } else {
+        console.log("No credentials found.");
       }
-    };
-    checkCredentials();
-  }, []);
+    };
+    checkCredentials();
+  }, []);
 
-  const getUUIDFromToken = async (token: string): Promise<string | null> => {
-    try {
-      const response = await fetch(
-        `https://hj2euvke89.execute-api.us-east-2.amazonaws.com/default/getUUID`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ accessToken: token }),
-        }
-      );
+const getUserDataFromToken = async (
+    token: string
+  ): Promise<{ uuid: string; hasCompletedQuestionnaire: boolean } | null> => {
+    try {
+      const response = await fetch(
+        `https://hj2euvke89.execute-api.us-east-2.amazonaws.com/default/getUUID`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ accessToken: token }),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -56,12 +65,23 @@ export default function LoginScreen() {
 
       const userData = await response.json();
       console.log("Successfully retrieved user data:", userData);
-      return userData.userSub || null;
-    } catch (error) {
-      console.error("Error in getUUIDFromToken:", error);
-      return null;
-    }
-  };
+      if (userData.userSub && userData.hasCompletedQuestionnaire !== undefined) {
+        return {
+          uuid: userData.userSub,
+          hasCompletedQuestionnaire: userData.hasCompletedQuestionnaire,
+        };
+      } else {
+          console.warn("User data from API was incomplete. Defaulting questionnaire status.");
+        return {
+          uuid: userData.userSub,
+          hasCompletedQuestionnaire: false, // Default to false
+        };
+      }
+    } catch (error) {
+      console.error("Error in getUserDataFromToken:", error);
+      return null;
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -114,9 +134,9 @@ export default function LoginScreen() {
         const parsedBody = JSON.parse(responseData.body);
         const accessToken =
           parsedBody.cognitoResponse.AuthenticationResult.AccessToken;
-        const uuid = await getUUIDFromToken(accessToken);
-        if (uuid) {
-          await saveCredentials(uuid, accessToken);
+        const userData = await getUserDataFromToken(accessToken);
+        if (userData) {
+          await saveCredentials(accessToken, userData.uuid,userData.hasCompletedQuestionnaire);
         } else {
           console.error("Failed to retrieve UUID from token.");
         }
@@ -130,9 +150,13 @@ export default function LoginScreen() {
           topOffset: 60,
         });
 
-        setTimeout(() => {
-          router.push("/(tabs)/HomePage");
-        }, 1000);
+      setTimeout(() => {
+          if (userData?.hasCompletedQuestionnaire) {
+            router.push("/(tabs)/HomePage");
+          } else {
+            router.push("/QuestionarePage");
+          }
+        }, 1000);
       }
     } catch (error) {
       console.error("Error during sign in:", error);
@@ -168,7 +192,7 @@ export default function LoginScreen() {
         <Text style={styles.title}>Login</Text>
 
         <View style={styles.inputContainer}>
-          <Feather name="mail" size={20} color="#555" style={styles.icon} />
+          <Mail size = {20} color = "#555" style = {styles.icon}/>
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -181,7 +205,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.inputContainer}>
-          <Feather name="lock" size={20} color="#555" style={styles.icon} />
+          <Lock size={20} color="#555" style={styles.icon} />
           <TextInput
             style={styles.input}
             placeholder="Password"
@@ -191,11 +215,7 @@ export default function LoginScreen() {
             onChangeText={(text) => setPassword(text)}
           />
           <Pressable onPress={() => setIsPasswordVisible(!isPasswordVisible)}>
-            <Feather
-              name={isPasswordVisible ? "eye" : "eye-off"}
-              size={20}
-              color="#555"
-            />
+            {isPasswordVisible ? <Eye size={20} color="#555" /> : <EyeOff size={20} color="#555" />}
           </Pressable>
         </View>
 

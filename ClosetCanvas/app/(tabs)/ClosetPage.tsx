@@ -6,7 +6,21 @@ import * as ImagePicker from "expo-image-picker";
 import MasonryList from "@react-native-seoul/masonry-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCredentials } from "../../util/auth";
-
+import {
+  User,
+  FolderClosed,
+  Heart,
+  Shirt,
+  Footprints,
+  Snowflake,
+  Image as ImageIcon, 
+  Plus,
+  Camera,
+  PersonStanding, 
+  UserRoundPen,
+  VenetianMask,
+  LucideIcon,
+} from "lucide-react-native";
 
 const CATEGORIES = ["All","Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
   type ClosetItem = {
@@ -14,15 +28,15 @@ const CATEGORIES = ["All","Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jac
   uri: string;
 };
 
-const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  All: "apps-outline",
-  Favorites: "heart",
-  Tops: "shirt-outline",
-  Pants: "walk-outline",
-  Dresses: "woman-outline",
-  Shoes: "footsteps-outline",
-  Jackets: "snow-outline",
-  "User Upload": "images-outline",
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  All: FolderClosed,
+  Favorites: Heart,
+  Tops: Shirt,
+  Pants: PersonStanding,
+  Dresses: VenetianMask,
+  Shoes: Footprints,
+  Jackets: Snowflake,
+  "User Upload": ImageIcon,
 };
 
 
@@ -71,11 +85,11 @@ const ClosetCard = React.memo(
           style={styles.heart}
           onPress={() => onToggleLike(item.id)}
         >
-          <Ionicons
-            name={isLiked ? "heart" : "heart-outline"}
-            size={30}
-            color={isLiked ? "#DE8672" : "#333"}
-          />
+        <Heart
+            size={30}
+            color={isLiked ? "#DE8672" : "#333"}
+            fill={isLiked ? "#DE8672" : "none"} // Add fill for a solid heart
+          />
         </TouchableOpacity>
       </View>
       </Pressable>
@@ -288,7 +302,6 @@ const toggleLike = useCallback((outfitId: number) => {
     setModalVisible(false);
   }
 
-  // --- DELETE your old handleDelete and ADD these three functions ---
 
   // This function just opens the modal
   const handleDelete = useCallback((id: number) => {
@@ -300,7 +313,7 @@ const toggleLike = useCallback((outfitId: number) => {
   const confirmDelete = () => {
     if (itemToDelete === null) return;
 
-    // --- THIS IS THE FIX ---
+   
     // Remove from user images
     setUserImages((prev) => prev.filter((item) => item.id !== itemToDelete));
     // Remove from local items
@@ -367,24 +380,21 @@ const allData: ClosetDataItem[] = useMemo(
   );
 
 
-  return (
-    <View style={styles.container}>
-       <Link href="/SettingsPage" style = {styles.userIcon}>
-            <Entypo name="user" size={28} color="white"  />
-          </Link>
+const ActiveCategoryIcon = CATEGORY_ICONS[activeCategory] || FolderClosed;
+
+  return (
+    <View style={styles.container}>
 <View style={styles.subtitleRow}>
   
-  <Ionicons
-    name={CATEGORY_ICONS[activeCategory] || "grid-outline"}
-    size={40}
-    marginTop = {45}
-    color="#714054"
-    style={{ marginRight: 10, marginTop:40, marginLeft:20 }}
-  />
-  <Text style={styles.subtitle}>
-    {activeCategory === "All" ? "Wardrobe" : activeCategory}
-  </Text>
-  
+<ActiveCategoryIcon
+    size={40}
+    color="#714054"
+    style={{ marginRight: 10, marginTop:40, marginLeft:20 }}
+  />
+  <Text style={styles.subtitle}>
+    {activeCategory === "All" ? "Wardrobe" : activeCategory}
+  </Text>
+  
 </View>
 
 
@@ -436,7 +446,7 @@ const allData: ClosetDataItem[] = useMemo(
 
       {/* Add Button */}
       <TouchableOpacity style={styles.addButton} onPress={imageSelecter}>
-        <Ionicons name="add" size={30} color="#714054" />
+        <Plus size={30} color="#714054" />
       </TouchableOpacity>
 
       {/* Modal */}
@@ -454,12 +464,12 @@ const allData: ClosetDataItem[] = useMemo(
             <Text style={styles.modalTitle}>Add to Closet</Text>
 
             <TouchableOpacity style={styles.modalButton} onPress={onTakePhoto}>
-              <Ionicons name="camera" size={22} color="#714054" />
+              <Camera size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Take Photo</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.modalButton} onPress={onPickImage}>
-              <Ionicons name="image" size={22} color="#714054" />
+              <ImageIcon size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Choose from Library</Text>
             </TouchableOpacity>
 
@@ -737,10 +747,15 @@ subtitleRow: {
   position: "absolute",
   top: 40, // adjust as needed
   right: 20, // distance from right edge
+  zIndex: 10,
   backgroundColor: "#714054", // optional for contrast
-  borderRadius: 50,
-  padding: 6,
-  zIndex: 10, // make sure it stays on top of everything
+  borderRadius: 22,
+  width:44,
+  height:44,
+  justifyContent: "center",
+  alignItems: "center",
+  alignContent:"center",
+  // make sure it stays on top of everything
 },
   loadingContainer: {
     flex: 1,

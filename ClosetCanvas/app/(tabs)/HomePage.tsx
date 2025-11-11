@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, } from "react";
 import {
   View,
   Text,
@@ -6,44 +6,61 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  ScrollView,
   Dimensions,
   Animated,
   Modal,
   Pressable,
   ImageStyle,
+  SafeAreaView, 
 } from "react-native";
 import { Ionicons, Entypo } from "@expo/vector-icons";
 import { Link } from "expo-router";
-import { PanGestureHandler, State } from "react-native-gesture-handler";
+import { PanGestureHandler, State, LongPressGestureHandler, ScrollView } from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width, height } = Dimensions.get("window");
-const SWIPE_THRESHOLD = width * 0.3; // How far to swipe to trigger action
+const SWIPE_THRESHOLD = width * 0.3; 
 
-// 1. DEFINE YOUR OUTFITS
-// Each outfit is an *array* of clothing items.
-// This structure is crucial for adding them to the ClosetPage.
+type ClosetDataItem = {
+  id: number;
+  source: any;
+  type: "local" | "user";
+  category: string;
+  description: string;
+  goodFor: string[];
+  event: string[];
+};
+
+
 const outfitsData: ClosetDataItem[][] = [
   // Outfit 1
   [
     {
-      id: 101, // Give items unique IDs
+      id: 101,
       source: require("../../assets/images/WhiteShirt.png"),
-      type: "user", // "user" type means it can be "saved"
+      type: "user",
       category: "Tops",
+      description: "A classic, crisp white cotton shirt. Versatile and timeless.",
+      goodFor: ["Sunny", "Warm", "Layering"],
+      event: ["Casual", "Brunch", "Work"],
     },
     {
       id: 102,
       source: require("../../assets/images/BlueJeans.png"),
       type: "user",
       category: "Pants",
+      description: "Comfortable slim-fit blue jeans.",
+      goodFor: ["Any Weather"],
+      event: ["Casual", "Everyday"],
     },
     {
       id: 103,
       source: require("../../assets/images/WhiteShoes.png"),
       type: "user",
       category: "Shoes",
+      description: "Clean white leather sneakers.",
+      goodFor: ["Walking"],
+      event: ["Casual"],
     },
   ],
   // Outfit 2
@@ -53,6 +70,9 @@ const outfitsData: ClosetDataItem[][] = [
       source: require("../../assets/images/dress.png"),
       type: "user",
       category: "Dresses",
+      description: "A light, floral sundress perfect for warm days.",
+      goodFor: ["Sunny", "Warm"],
+      event: ["Brunch", "Day Out", "Party"],
     },
   ],
   // Outfit 3
@@ -62,37 +82,50 @@ const outfitsData: ClosetDataItem[][] = [
       source: require("../../assets/images/plaid.png"),
       type: "user",
       category: "Tops",
+      description: "A cozy red and black plaid flannel shirt.",
+      goodFor: ["Cool", "Cloudy", "Layering"],
+      event: ["Casual", "Bonfire", "Study"],
     },
     {
       id: 302,
       source: require("../../assets/images/BlueJeans.png"),
       type: "user",
       category: "Pants",
+      description: "Comfortable slim-fit blue jeans.",
+      goodFor: ["Any Weather"],
+      event: ["Casual", "Everyday"],
     },
     {
       id: 303,
       source: require("../../assets/images/sneakers.png"),
       type: "user",
       category: "Shoes",
+      description: "High-top canvas sneakers.",
+      goodFor: ["Walking", "Skating"],
+      event: ["Casual"],
     },
   ],
 ];
 
-// Helper type from your ClosetPage (put it at the top)
-type ClosetDataItem = {
-  id: number;
-  source: any;
-  type: "local" | "user";
-  category: string;
+const shuffleArray = (array: any[]) => {
+  let shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 };
 
 export default function HomePage() {
   const [outfitStack, setOutfitStack] = useState(outfitsData);
   const [likeModalVisible, setLikeModalVisible] = useState(false);
   const [swipedItem, setSwipedItem] = useState<ClosetDataItem[] | null>(null);
-
-  // Animated values for the top card
+  const [isFlipped, setIsFlipped] = useState(false);
   const pan = useRef(new Animated.ValueXY()).current;
+ const flipAnim = useRef(new Animated.Value(0)).current;
+ const panRef = useRef<PanGestureHandler>(null);
+  const longPressRef = useRef<LongPressGestureHandler>(null);
+  const innerScrollRef = useRef<ScrollView>(null);
   const rotate = pan.x.interpolate({
     inputRange: [-width / 2, 0, width / 2],
     outputRange: ["-10deg", "0deg", "10deg"],
@@ -103,6 +136,17 @@ export default function HomePage() {
     outputRange: [0.5, 1, 0.5],
   });
 
+  const frontRotateY = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "180deg"],
+  });
+  const backRotateY = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["180deg", "360deg"],
+  });
+  const generateNewOutfits = () => {
+    setOutfitStack(shuffleArray(outfitsData));
+  };
   // 2. LOGIC FOR SWIPING
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: pan.x, translationY: pan.y } }],
@@ -141,26 +185,32 @@ export default function HomePage() {
     ],
   };
 
-  const onHandlerStateChange = (event: any) => {
+  const onSwipeStateChange = (event: any) => {
     if (event.nativeEvent.oldState === State.ACTIVE) {
+      if (isFlipped) {
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          friction: 4,
+          useNativeDriver: false,
+        }).start();
+        return; 
+      }
+      
       const { translationX } = event.nativeEvent;
 
       if (translationX > SWIPE_THRESHOLD) {
-        // --- SWIPE RIGHT (LIKE) ---
         Animated.timing(pan, {
           toValue: { x: width + 100, y: 0 },
-          duration: 200, // Make it disappear quickly (e.g., 200 milliseconds)
+          duration: 200, 
           useNativeDriver: false,
         }).start(() => handleLike());
       } else if (translationX < -SWIPE_THRESHOLD) {
-        // --- SWIPE LEFT (NOPE) ---
         Animated.timing(pan, {
           toValue: { x: -width - 100, y: 0 },
           duration: 200,
           useNativeDriver: false,
         }).start(() => removeTopCard());
       } else {
-        // --- RETURN TO CENTER ---
         Animated.spring(pan, {
           toValue: { x: 0, y: 0 },
           friction: 4,
@@ -170,17 +220,33 @@ export default function HomePage() {
     }
   };
 
+  const onLongPressStateChange = (event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      handleFlip();
+    }
+  };
+
+  const handleFlip = () => {
+    const toValue = isFlipped ? 0 : 1;
+    Animated.spring(flipAnim, {
+      toValue,
+      friction: 8,
+      useNativeDriver: true, 
+    }).start();
+    setIsFlipped(!isFlipped);
+  };
+
   // 3. LOGIC FOR MODAL AND SAVING
   const handleLike = () => {
-    // Store the item and show the modal
     setSwipedItem(outfitStack[0]);
     setLikeModalVisible(true);
   };
 
   const removeTopCard = () => {
-    // Remove the card from state and reset animation
     setOutfitStack((prev) => prev.slice(1));
     pan.setValue({ x: 0, y: 0 });
+    setIsFlipped(false);
+    flipAnim.setValue(0);
   };
 
   const handleAddToWardrobe = async (isFavorite: boolean) => {
@@ -225,13 +291,15 @@ export default function HomePage() {
         if (index === 0) {
           return (
             <PanGestureHandler
-              key={outfit[0].id} // Use first item's ID as key
+              key={outfit[0].id}
+              ref={panRef}
+              waitFor={[longPressRef, innerScrollRef]} // Waits for long press to fail
               onGestureEvent={onGestureEvent}
-              onHandlerStateChange={onHandlerStateChange}
+              onHandlerStateChange={onSwipeStateChange}
+              enabled = {!isFlipped}
             >
-              <Animated.View
+              <Animated.View 
                 style={[
-                  styles.outfitCard,
                   styles.topCard,
                   {
                     transform: [
@@ -243,8 +311,37 @@ export default function HomePage() {
                   },
                 ]}
               >
-                <CardContent outfit={outfit} />
-                {/* Like / Save Indicator (Green Checkmark) */}
+                
+<LongPressGestureHandler
+                  ref={longPressRef}
+                  onHandlerStateChange={onLongPressStateChange}
+                  minDurationMs={400} 
+                >
+                  <View style={styles.outfitCard}>
+                    <Animated.View
+                      style={[
+                        styles.cardSide,
+                        styles.cardFront,
+                        { transform: [{ rotateY: frontRotateY }] },
+                      ]}
+                    >
+                      <CardContent outfit={outfit} />
+                    </Animated.View>
+
+                    {/* --- NEW --- Card Back */}
+                    <Animated.View
+                      style={[
+                        styles.cardSide,
+                        styles.cardBack,
+                        { transform: [{ rotateY: backRotateY }] },
+                      ]}
+                    >
+                      <CardBackContent outfit={outfit} onClose={handleFlip} scrollRef={innerScrollRef} />
+                    </Animated.View>
+                  </View>
+                </LongPressGestureHandler>
+
+                {/* Like / Save Indicator */}
                 <Animated.View
                   style={[styles.likeIndicator, likeOpacityAndScale]}
                 >
@@ -255,7 +352,7 @@ export default function HomePage() {
                   />
                 </Animated.View>
 
-                {/* Nope / Pass Indicator (Red X) */}
+                {/* Nope / Pass Indicator */}
                 <Animated.View
                   style={[styles.nopeIndicator, nopeOpacityAndScale]}
                 >
@@ -266,7 +363,6 @@ export default function HomePage() {
           );
         }
 
-        // --- Render the next card beneath it ---
         if (index === 1) {
           return (
             <Animated.View
@@ -278,39 +374,95 @@ export default function HomePage() {
           );
         }
 
-        // Other cards aren't visible
         return null;
       })
-      .reverse(); // Crucial: reverses the .map() output
+      .reverse(); 
   };
 
-  // This is the content inside each card
-  const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => (
-    <>
-      <View style={styles.cardImageContainer}>
-        {outfit.map((item) => {
-          // Dynamically style based on category
-          let style: ImageStyle = styles.imageShirt; // Default
-          if (item.category === "Pants") style = styles.imagePants;
-          if (item.category === "Shoes") style = styles.imageShoes;
-          if (item.category === "Dresses") style = styles.imageDress;
+const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => {
+    const top = outfit.find((item) => item.category === "Tops");
+    const pants = outfit.find((item) => item.category === "Pants");
+    const shoes = outfit.find((item) => item.category === "Shoes");
+    const dress = outfit.find((item) => item.category === "Dresses");
 
-          return <Image key={item.id} source={item.source} style={style} />;
-        })}
-      </View>
-
-      {/* --- Hinge-Style Breakdown --- */}
-      <View style={styles.hingeSection}>
-        <Text style={styles.hingeTitle}>This outfit includes:</Text>
-        <View style={styles.categoryRow}>
-          {outfit.map((item) => (
-            <View key={item.id} style={styles.categoryTag}>
-              <Text style={styles.categoryTagText}>{item.category}</Text>
-            </View>
-          ))}
+    return (
+      <>
+        <View style={styles.cardImageContainer}>
+          {dress ? (
+            <Image source={dress.source} style={styles.imageDress} />
+          ) : (
+            <>
+              {pants && <Image source={pants.source} style={styles.imagePants} />}
+              {top && <Image source={top.source} style={styles.imageShirt} />}
+              {shoes && <Image source={shoes.source} style={styles.imageShoes} />}
+            </>
+          )}
         </View>
-      </View>
-    </>
+
+        {/* --- Hinge-Style Breakdown ---*/}
+        <View style={styles.hingeSection}>
+          <Text style={styles.hingeTitle}>This outfit includes:</Text>
+          <View style={styles.categoryRow}>
+            {outfit.map((item) => (
+              <View key={item.id} style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>{item.category}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </>
+    );
+  };
+
+  const CardBackContent = ({
+    outfit,
+    onClose,
+    scrollRef, 
+  }: {
+    outfit: ClosetDataItem[];
+    onClose: () => void;
+    scrollRef: React.Ref<ScrollView>;
+  }) => (
+    <SafeAreaView style={{ flex: 1 }}>
+      <TouchableOpacity style={styles.cardBackCloseButton} onPress={onClose}>
+        <Ionicons name="close" size={24} color="#3C2332" />
+        <Text style={styles.cardBackCloseText}>Back to outfit</Text>
+      </TouchableOpacity>
+
+      <ScrollView
+        style={styles.cardBackScrollContainer} 
+        contentContainerStyle={styles.cardBackScroll}
+       
+      >
+        {outfit.map((item) => (
+          <View key={item.id} style={styles.itemDetailContainer}>
+            <View style={styles.itemDetailHeader}>
+              <Image source={item.source} style={styles.itemDetailImage} />
+              <Text style={styles.itemDetailTitle}>{item.category}</Text>
+            </View>
+            <Text style={styles.itemDetailDescription}>{item.description}</Text>
+
+            <Text style={styles.itemDetailSectionTitle}>Good for...</Text>
+            <View style={styles.itemDetailTagRow}>
+              {item.goodFor.map((tag) => (
+                <View key={tag} style={styles.itemDetailTag}>
+                  <Text style={styles.itemDetailTagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.itemDetailSectionTitle}>Perfect for...</Text>
+            <View style={styles.itemDetailTagRow}>
+              {item.event.map((tag) => (
+                <View key={tag} style={styles.itemDetailTag}>
+                  <Text style={styles.itemDetailTagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
   );
 
   return (
@@ -341,7 +493,7 @@ export default function HomePage() {
         <View style={styles.textSection}>
           <Text style={styles.outfitTitle}>Today's Suggestion</Text>
           <Text style={styles.outfitSubtitle}>
-            Swipe right to save, left to pass
+            Swipe to decide, or long-press for details
           </Text>
         </View>
 
@@ -353,9 +505,18 @@ export default function HomePage() {
             <View style={styles.noMoreCards}>
               <Text style={styles.outfitTitle}>All done for today!</Text>
               <Text style={styles.outfitSubtitle}>
-                Check back tomorrow for new outfits.
+                Would you like to see more suggestions?
               </Text>
-            </View>
+
+                <TouchableOpacity
+              style={styles.generateButton}
+              onPress={generateNewOutfits}
+            >
+              <Text style={styles.generateButtonText}>
+                Generate New Outfits
+              </Text>
+            </TouchableOpacity>
+          </View>
           )}
         </View>
       </ScrollView>
@@ -512,23 +673,24 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   outfitCard: {
-    backgroundColor: "#714054",
     borderRadius: 15,
-    width: width * 0.85, // Card width
-    height: 520, // Card height
+    width: width * 0.85,
+    height: 520,
     elevation: 5,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 3,
-    position: "absolute", // This is key for stacking
-    overflow: "hidden", // Hides the "hinge" section until card is ready
+    position: "absolute",
+    overflow: "hidden",// Hides the "hinge" section until card is ready
   },
   topCard: {
-    // This card is interactive
+    position: "absolute",
+    width: width * 0.85,
+    height: 520,
   },
   nextCard: {
-    // The card underneath
+ backgroundColor: "#714054", 
     transform: [{ scale: 0.95 }],
     top: 20,
   },
@@ -536,48 +698,63 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     height: "100%",
+    paddingHorizontal:20, 
   },
 
-  // --- CARD CONTENT STYLES ---
+  generateButton: {
+    backgroundColor: "#714054", // Matches your card theme
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 20,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  generateButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+
   cardImageContainer: {
     height: "75%",
-    justifyContent: "center", // Keeps items vertically centered overall
-    alignItems: "center", // Keeps items horizontally centered overall
-    // backgroundColor: 'lightblue', // Optional: Add BG color for debugging layout
+    justifyContent: "center", 
+    alignItems: "center", 
+    backgroundColor: "#714054", 
   },
   imageShirt: {
-    width: "80%", // Use percentage for responsiveness
-    height: "50%", // Adjust height proportion
+    width: "70%", 
+    height: "50%",
     resizeMode: "contain",
-    // position: 'absolute', // You might need absolute positioning for precise layering
-    top: "15%", // Adjust top position if using absolute
-    zIndex: 2, // Ensure shirt is on top
+     position: 'absolute', 
+    top: "-2%", 
+    zIndex: 2, 
   },
   imagePants: {
-    width: "90%", // Use percentage
-    height: "80%", // Adjust height proportion
+    width: "80%", 
+    height: "70%", 
     resizeMode: "contain",
-    marginTop: "-15%", // Adjust negative margin using percentage
-    // position: 'absolute',
-    top: "5%", // Adjust top position if using absolute
-    zIndex: 1, // Pants below shirt
+    marginTop: "20%", 
+     position: 'absolute',
+    top: "15%",
+    zIndex: 1, 
   },
   imageShoes: {
-    width: "50%", // Use percentage
-    height: "30%", // Adjust height proportion
-    resizeMode: "contain",
-    marginTop: "-10%", // Adjust negative margin using percentage
-    //position: 'absolute',
-    top: "-10%", // Adjust top position if using absolute
-    zIndex: 1, // Shoes below pants
+   position: 'absolute',
+    width: '35%',
+    height: '55%',
+    resizeMode: 'contain',
+    bottom: '10%',
+    left: '60%',
+    zIndex: 3, 
+    transform: [{ rotate: '-10deg' }],
   },
   imageDress: {
-    width: "90%", // Use percentage for responsiveness
-    height: "90%", // Allow dress to take more space
-    resizeMode: "contain", // Changed to contain to avoid cropping dresses
-    // position: 'absolute', // If you need absolute positioning
-    // top: '5%',
-    zIndex: 1, // Ensure it layers correctly if needed
+    width: "90%",
+    height: "90%", 
+    resizeMode: "contain", 
   },
 
   // --- HINGE-STYLE STYLES ---
@@ -683,5 +860,88 @@ const styles = StyleSheet.create({
     top: "30%", // Adjust positioning as needed
     right: 20,
     zIndex: 10, // Ensure it's above the card content
+  },
+  cardSide: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backfaceVisibility: "hidden", // This makes the flip 3D
+  },
+  cardFront: {
+    // No extra styles needed, it's the default
+  },
+  cardBack: {
+    backgroundColor: "#AB8C96", // Match hinge, or choose new color
+  },
+  cardBackScrollContainer: {
+    flex: 1, // This tells the ScrollView to take up the remaining space
+  },
+  cardBackCloseButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+    gap: 5,
+  },
+  cardBackCloseText: {
+    color: "#3C2332",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  cardBackScroll: {
+    padding: 15,
+    paddingTop: 0,
+  },
+  itemDetailContainer: {
+    marginBottom: 20,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    padding: 12,
+  },
+  itemDetailHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  itemDetailImage: {
+    width: 60,
+    height: 60,
+    resizeMode: "contain",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 8,
+  },
+  itemDetailTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#3C2332",
+  },
+  itemDetailDescription: {
+    fontSize: 14,
+    color: "#3C2332",
+    marginBottom: 12,
+    fontStyle: "italic",
+  },
+  itemDetailSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#3C2332",
+    marginBottom: 8,
+  },
+  itemDetailTagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  itemDetailTag: {
+    backgroundColor: "#714054",
+    borderRadius: 7,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  itemDetailTagText: {
+    color: "white",
+    fontWeight: "500",
+    fontSize: 13,
   },
 });

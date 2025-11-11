@@ -1,167 +1,269 @@
-import React, { useMemo } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from "react-native";
-import { Link, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons"; // Used for all icons in settings
-import { removeCredentials } from "../util/auth";
+// import React, { useMemo } from "react";
+// import {
+//   View,
+//   Text,
+//   StyleSheet,
+//   TouchableOpacity,
+//   ScrollView,
+//   Alert,
+//   Image, // Import Image
+// } from "react-native";
+// import { Link, useRouter } from "expo-router";
+// import {
+//   ArrowLeft,
+//   Settings,
+//   User,
+//   Bell,
+//   Eye,
+//   Shirt,
+//   Lock,
+//   HelpCircle,
+//   Info,
+//   LucideIcon,
+//   ChevronRight, // Import for the "Edit Profile" button
+// } from "lucide-react-native";
+// import { removeCredentials } from "../util/auth";
 
-// Define the structure for each settings item
-type SettingsItemProps = {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress?: () => void;
-};
+// // Define the structure for each settings item
+// type SettingsItemProps = {
+//   icon: LucideIcon;
+//   label: string;
+//   onPress?: () => void;
+// };
 
-// Settings items, defined as a function to accept the router
-const settingsItems = (router: any): SettingsItemProps[] => [
-  {
-    icon: "person-outline",
-    label: "Account",
-    // Example: onPress: () => router.push('/AccountPage')
-    // Add navigation logic here when ready
-  },
-  { icon: "notifications-outline", label: "Notifications" },
-  { icon: "eye-outline", label: "Appearance" },
-  { icon: "shirt-outline", label: "Clothing Mode" },
-  { icon: "lock-closed-outline", label: "Privacy & Security" },
-  { icon: "help-buoy-outline", label: "Help & Support" },
-  { icon: "information-circle-outline", label: "About" },
-];
+// // --- MODIFIED ---
+// // Removed "Account" as it's now handled by the profile card
+// const settingsItems = (router: any): SettingsItemProps[] => [
+//   { icon: Bell, label: "Notifications" },
+//   { icon: Eye, label: "Appearance" },
+//   { icon: Shirt, label: "Clothing Mode" },
+//   { icon: Lock, label: "Privacy & Security" },
+//   { icon: HelpCircle, label: "Help & Support" },
+//   { icon: Info, label: "About" },
+// ];
 
-export default function SettingsPage() {
-  const router = useRouter();
-  const items = useMemo(() => settingsItems(router), [router]);
+// export default function SettingsPage() {
+//   const router = useRouter();
+//   const items = useMemo(() => settingsItems(router), [router]);
 
-  const handleLogout = async () => {
-    Alert.alert(
-      "Log Out",
-      "Are you sure you want to log out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Log Out",
-          style: "destructive",
-          onPress: async () => {
-            // Clear credentials from secure storage
-            await removeCredentials();
-            console.log("User logged out, credentials removed.");
-            // Navigate to Login page and prevent going back
-            router.replace('/Loginpage');
-          }
-        }
-      ]
-    );
-  };
+//   const handleLogout = async () => {
+//     Alert.alert(
+//       "Log Out",
+//       "Are you sure you want to log out?",
+//       [
+//         { text: "Cancel", style: "cancel" },
+//         {
+//           text: "Log Out",
+//           style: "destructive",
+//           onPress: async () => {
+//             await removeCredentials();
+//             console.log("User logged out, credentials removed.");
+//             router.replace("/Loginpage");
+//           },
+//         },
+//       ],
+//       { cancelable: true } // Allow dismissing by tapping outside
+//     );
+//   };
 
-  return (
-    <View style={styles.page}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={28} color="#3C2332" />
-        </TouchableOpacity>
+//   const handleEditProfile = () => {
+//     // This is where you would navigate to your edit profile screen
+//     console.log("Navigate to Edit Profile");
+//     // e.g., router.push('/(main)/profile/edit');
+//   };
 
-        <View style={styles.headerCenter}>
-          <Ionicons name="settings-outline" size={32} color="#3C2332" />
-          <Text style={styles.headerTitle}>Settings</Text>
-        </View>
+//   return (
+//     <View style={styles.page}>
+//       {/* Header */}
+//       <View style={styles.header}>
+//         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+//           <ArrowLeft size={28} color="#3C2332" />
+//         </TouchableOpacity>
 
-        {/* Spacer (Right) - balances the back button */}
-        <View style={{ width: 28 }} />
-      </View>
+//         <View style={styles.headerCenter}>
+//           {/* --- MODIFIED --- */}
+//           <User size={30} color="#3C2332" />
+//           <Text style={styles.headerTitle}>Profile</Text>
+//         </View>
 
-      {/* Settings List */}
-      <ScrollView contentContainerStyle={styles.listContainer}>
-        {items.map((item, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.row}
-            onPress={item.onPress || (() => console.log(`Tapped: ${item.label}`))}
-          >
-            <Ionicons name={item.icon} size={24} color="#3C2332" style={styles.rowIcon} />
-            <Text style={styles.rowLabel}>{item.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+//         <View style={{ width: 28 }} />
+//       </View>
 
-      {/* Logout Button */}
-      <TouchableOpacity
-        style={styles.logoutButton}
-        onPress={handleLogout}
-      >
-        <Text style={styles.logoutButtonText}>Log Out</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
+//       {/* --- NEW PROFILE CARD --- */}
+//       <View style={styles.profileCard}>
+//         <View style={styles.profileAvatar}>
+//           {/* You can replace this with an <Image /> component */}
+//           <User size={40} color="white" />
+//         </View>
+//         <Text style={styles.profileName}>Your Username</Text>
+//         <Text style={styles.profileEmail}>your.email@example.com</Text>
 
-// Styles
-const styles = StyleSheet.create({
-  page: {
-    flex: 1,
-    backgroundColor: '#E5D7D7',
-    paddingTop: 60,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    justifyContent: "space-between", 
-    paddingBottom: 20,
-    paddingTop: 10,
-  },
-  backButton: {
-    padding: 5, // Increases the tap area
-  },
-  listContainer: {
-    paddingHorizontal: 20,
-  },
-  headerCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    color: '#3C2332',
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginLeft: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#AB8C96',
-  },
-  rowIcon: {
-      marginRight: 15,
-  },
-  rowLabel: {
-    flex: 1,
-    fontSize: 18,
-    color: '#3C2332',
-  },
-  logoutButton: {
-    backgroundColor: '#714054', // App theme color
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginHorizontal: 20, // Match list padding
-    marginTop: 20, // Space above the button
-    marginBottom: 40, // More space at the bottom
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoutButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-});
+//         <TouchableOpacity
+//           style={styles.editProfileButton}
+//           onPress={handleEditProfile}
+//         >
+//           <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+//           <ChevronRight size={16} color="#3C2332" />
+//         </TouchableOpacity>
+//       </View>
+      
 
+//       {/* Settings List */}
+//       <Text style={styles.sectionTitle}>Settings</Text>
+//       <ScrollView contentContainerStyle={styles.listContainer}>
+//         {items.map((item, index) => {
+//           const IconComponent = item.icon;
+//           return (
+//             <TouchableOpacity
+//               key={index}
+//               style={styles.row}
+//               onPress={item.onPress || (() => console.log(`Tapped: ${item.label}`))}
+//             >
+//               <IconComponent size={24} color="#3C2332" style={styles.rowIcon} />
+//               <Text style={styles.rowLabel}>{item.label}</Text>
+//             </TouchableOpacity>
+//           );
+//         })}
+//       </ScrollView>
+
+//       {/* Logout Button */}
+//       <TouchableOpacity
+//         style={styles.logoutButton}
+//         onPress={handleLogout}
+//       >
+//         <Text style={styles.logoutButtonText}>Log Out</Text>
+//       </TouchableOpacity>
+//     </View>
+//   );
+// }
+
+// // Styles
+// const styles = StyleSheet.create({
+//   page: {
+//     flex: 1,
+//     backgroundColor: "#E5D7D7",
+//     paddingTop: 60,
+//   },
+//   header: {
+//     flexDirection: "row",
+//     alignItems: "center",
+//     paddingHorizontal: 20,
+//     justifyContent: "space-between",
+//     paddingBottom: 20,
+//     paddingTop: 10,
+//   },
+//   backButton: {
+//     padding: 5,
+//   },
+//   headerCenter: {
+//     flexDirection: "row",
+//     alignItems: "center",
+//   },
+//   headerTitle: {
+//     color: "#3C2332",
+//     fontSize: 28,
+//     fontWeight: "bold",
+//     marginLeft: 10,
+//   },
+
+//   // --- NEW PROFILE STYLES ---
+//   profileCard: {
+//     backgroundColor: "white",
+//     borderRadius: 12,
+//     marginHorizontal: 20,
+//     padding: 20,
+//     alignItems: "center",
+//     shadowColor: "#000",
+//     shadowOffset: { width: 0, height: 2 },
+//     shadowOpacity: 0.1,
+//     shadowRadius: 4,
+//     elevation: 3,
+//     marginBottom: 30,
+//   },
+//   profileAvatar: {
+//     width: 80,
+//     height: 80,
+//     borderRadius: 40,
+//     backgroundColor: "#AB8C96",
+//     justifyContent: "center",
+//     alignItems: "center",
+//     marginBottom: 12,
+//   },
+//   profileName: {
+//     fontSize: 22,
+//     fontWeight: "bold",
+//     color: "#3C2332",
+//   },
+//   profileEmail: {
+//     fontSize: 16,
+//     color: "#714054",
+//     marginBottom: 16,
+//   },
+//   editProfileButton: {
+//     flexDirection: "row",
+//     backgroundColor: "#E5D7D7",
+//     paddingVertical: 10,
+//     paddingHorizontal: 20,
+//     borderRadius: 8,
+//     alignItems: "center",
+//   },
+//   editProfileButtonText: {
+//     fontSize: 16,
+//     fontWeight: "600",
+//     color: "#3C2332",
+//     marginRight: 5,
+//   },
+//   sectionTitle: {
+//     fontSize: 14,
+//     fontWeight: "600",
+//     color: "#714054",
+//     marginHorizontal: 20,
+//     marginBottom: 10,
+//     textTransform: "uppercase",
+//   },
+//   // --- END NEW STYLES ---
+
+//   listContainer: {
+//     paddingHorizontal: 20,
+//     backgroundColor: 'white', // Group settings in a white card
+//     marginHorizontal: 20,
+//     borderRadius: 12,
+//     paddingBottom: 10, // Add padding to bottom of list
+//   },
+//   row: {
+//     flexDirection: "row",
+//     alignItems: "center",
+//     paddingVertical: 18,
+//     borderBottomWidth: 1,
+//     borderBottomColor: "#E5D7D7", // Lighter separator
+//   },
+//   // Remove border from the last item in the list
+//   // Note: This requires a small logic change in the map function
+//   // or you can just let the last one have a border.
+//   // For simplicity, we'll let it be for now.
+
+//   rowIcon: {
+//     marginRight: 15,
+//   },
+//   rowLabel: {
+//     flex: 1,
+//     fontSize: 18,
+//     color: "#3C2332",
+//   },
+//   logoutButton: {
+//     backgroundColor: "#714054",
+//     borderRadius: 8,
+//     paddingVertical: 14,
+//     paddingHorizontal: 20,
+//     marginHorizontal: 20,
+//     marginTop: 20,
+//     marginBottom: 40,
+//     alignItems: "center",
+//     justifyContent: "center",
+//   },
+//   logoutButtonText: {
+//     color: "white",
+//     fontSize: 16,
+//     fontWeight: "bold",
+//   },
+// });
