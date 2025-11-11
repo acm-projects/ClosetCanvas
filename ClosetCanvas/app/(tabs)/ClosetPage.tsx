@@ -256,34 +256,30 @@ const initialLocalData: ClosetDataItem[] = [
       } catch (e) {
         console.log("[DEBUG] Raw credentials logging failed", e);
       }
-      // Extract the actual user ID from the JWT token
+      // Extract the actual user ID from the JWT token (use accessToken)
       try {
-        const tokenParts = creds.uuid.split('.');
-        // Decode payload safely (atob may not exist in all environments)
+        const token = creds.accessToken;
+        const tokenParts = token.split('.');
         let decoded = '';
         try {
           decoded = typeof atob === 'function' ? atob(tokenParts[1]) : Buffer.from(tokenParts[1], 'base64').toString('utf8');
         } catch (e) {
-          // Fallback: try globalThis.atob
           try { decoded = (globalThis as any).atob(tokenParts[1]); } catch (e2) { decoded = ''; }
         }
         const payload = decoded ? JSON.parse(decoded) : {};
-        const actualUserId = payload.sub; // Using sub as the unique identifier
-        
+        const actualUserId = payload.sub;
         setUserId(actualUserId);
-        setUserToken(creds.accessToken);
+        setUserToken(token);
         console.log("[DEBUG] Extracted user ID:", actualUserId);
-        
         if (actualUserId) {
-          await fetchUserImagesFromS3(actualUserId, creds.accessToken);
+          await fetchUserImagesFromS3(actualUserId, token);
         } else {
           console.error("[ERROR] Could not extract user ID from token");
         }
       } catch (error) {
         console.error("[ERROR] Failed to parse user ID from token:", error);
-        setUserId(creds.uuid);
+        setUserId(null);
         setUserToken(creds.accessToken);
-        await fetchUserImagesFromS3(creds.uuid, creds.accessToken);
       }
     } else {
       console.warn("No credentials found. User is not logged in.");
@@ -338,6 +334,7 @@ const initialLocalData: ClosetDataItem[] = [
     setModalVisible(false);
     setIsLoading(true);
 
+    console.log("userId:", userId, "userToken:", userToken);
     if (!userId || !userToken) {
       Alert.alert("Error", "You are not logged in. Please restart the app.");
       setIsLoading(false);
