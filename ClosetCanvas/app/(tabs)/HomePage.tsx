@@ -12,86 +12,89 @@ import {
   Modal,
   Pressable,
   ImageStyle,
+  Alert,
 } from "react-native";
-import { Ionicons, Entypo } from "@expo/vector-icons";
-import { Link } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getCredentials } from "../../util/auth";
 
 const { width, height } = Dimensions.get("window");
-const SWIPE_THRESHOLD = width * 0.3; // How far to swipe to trigger action
+const SWIPE_THRESHOLD = width * 0.3;
 
-// 1. DEFINE YOUR OUTFITS
-// Each outfit is an *array* of clothing items.
-// This structure is crucial for adding them to the ClosetPage.
-const outfitsData: ClosetDataItem[][] = [
-  // Outfit 1
-  [
-    {
-      id: 101, // Give items unique IDs
-      source: require("../../assets/images/WhiteShirt.png"),
-      type: "user", // "user" type means it can be "saved"
-      category: "Tops",
-    },
-    {
-      id: 102,
-      source: require("../../assets/images/BlueJeans.png"),
-      type: "user",
-      category: "Pants",
-    },
-    {
-      id: 103,
-      source: require("../../assets/images/WhiteShoes.png"),
-      type: "user",
-      category: "Shoes",
-    },
-  ],
-  // Outfit 2
-  [
-    {
-      id: 201,
-      source: require("../../assets/images/dress.png"),
-      type: "user",
-      category: "Dresses",
-    },
-  ],
-  // Outfit 3
-  [
-    {
-      id: 301,
-      source: require("../../assets/images/plaid.png"),
-      type: "user",
-      category: "Tops",
-    },
-    {
-      id: 302,
-      source: require("../../assets/images/BlueJeans.png"),
-      type: "user",
-      category: "Pants",
-    },
-    {
-      id: 303,
-      source: require("../../assets/images/sneakers.png"),
-      type: "user",
-      category: "Shoes",
-    },
-  ],
-];
-
-// Helper type from your ClosetPage (put it at the top)
+// -------- Types ----------
 type ClosetDataItem = {
   id: number;
-  source: any;
+  source: any; // { uri } or require(...)
   type: "local" | "user";
   category: string;
 };
 
+type GetClosetItemsResp = {
+  user_id: string | null;
+  count: number;
+  items: Array<{
+    id?: string;       // our API sometimes returns "id"
+    item_id?: string;  // or "item_id"
+    uri?: string | null;
+    clothingType?: number | null;
+  }>;
+};
+
+type GetOutfitsResp = {
+  user_id: string | null;
+  count: number;
+  outfits: Array<{
+    outfit_id: string;
+    score?: number | null;
+    items: Array<{
+      itemId: string;
+      clothingType?: number | null;
+    }>;
+  }>;
+};
+
+// -------- API endpoints ----------
+const API_BASE = "https://3a42g82o4d.execute-api.us-east-2.amazonaws.com/dev";
+const ITEMS_URL = `${API_BASE}/s3v2`;
+const OUTFITS_URL = `https://1dzpo66n78.execute-api.us-east-2.amazonaws.com/production/outfits`; // your working outfits endpoint
+
+// -------- helpers ----------
+const uuidToInt = (s: string): number => {
+  if (!s) return Date.now();
+  const hex = s.replace(/-/g, "").slice(0, 8);
+  const n = parseInt(hex || "0", 16);
+  return Number.isNaN(n) ? Date.now() : n;
+};
+
+const mapClothingTypeToCategory = (t?: number | null): string => {
+  switch (t) {
+    case 1:
+      return "Tops";
+    case 2:
+      return "Pants";
+    case 3:
+      return "Jackets";
+    case 4:
+      return "Dresses";
+    case 5:
+      return "Shoes";
+    default:
+      return "User Upload";
+  }
+};
+
+// =========================================================
+//                     COMPONENT
+// =========================================================
 export default function HomePage() {
-  const [outfitStack, setOutfitStack] = useState(outfitsData);
+  const [outfitStack, setOutfitStack] = useState<ClosetDataItem[][]>([]);
   const [likeModalVisible, setLikeModalVisible] = useState(false);
   const [swipedItem, setSwipedItem] = useState<ClosetDataItem[] | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Animated values for the top card
+  // animation
   const pan = useRef(new Animated.ValueXY()).current;
   const rotate = pan.x.interpolate({
     inputRange: [-width / 2, 0, width / 2],
@@ -103,11 +106,116 @@ export default function HomePage() {
     outputRange: [0.5, 1, 0.5],
   });
 
-  // 2. LOGIC FOR SWIPING
+  // --------------------------------
+  //           DATA LOAD
+  // --------------------------------
+  useEffect(() => {
+    (async () => {
+      const creds = await getCredentials();
+      console.log("[Home] getCredentials() →", creds);
+      // You said: creds.uuid is actually the Access Token in one place—
+      // here we’ll use `creds.uuid || creds.accessToken` and log for clarity.
+      const uid = creds?.uuid || creds?.accessToken || null;
+      if (!uid) {
+        console.warn("[Home] No user id found in credentials.");
+        Alert.alert("Not logged in", "Please log in again.");
+        return;
+      }
+      setUserId(creds.accessToken);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        setLoading(true);
+        // 1) fetch items (for URIs)
+        const itemsUrl = `${ITEMS_URL}?user_id=${encodeURIComponent(
+          userId
+        )}&signed=1&expiresIn=3600`;
+        console.log("[Home] GET Items URL:", itemsUrl);
+        const itemsRes = await fetch(itemsUrl);
+        const itemsRaw = await itemsRes.text();
+        console.log("[Home] Items status:", itemsRes.status);
+        console.log("[Home] Items raw:", itemsRaw);
+        const itemsJson: GetClosetItemsResp = JSON.parse(itemsRaw || "{}");
+        const itemsList = itemsJson?.items || [];
+
+        // Key by item id string for quick lookup
+        const itemsById = new Map<
+          string,
+          { uri: string | null | undefined; clothingType?: number | null }
+        >();
+        for (const it of itemsList) {
+          const key = (it.id || it.item_id || "").toString();
+          if (key) itemsById.set(key, { uri: it.uri, clothingType: it.clothingType });
+        }
+        console.log("[Home] itemsById keys:", Array.from(itemsById.keys()).length);
+
+        // 2) fetch outfits (no color fields)
+        const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(userId)}`;
+        console.log("[Home] GET Outfits URL:", outfitsUrl);
+        const outfitsRes = await fetch(outfitsUrl);
+        const outfitsRaw = await outfitsRes.text();
+        console.log("[Home] Outfits status:", outfitsRes.status);
+        console.log("[Home] Outfits raw:", outfitsRaw);
+        const outfitsJson: GetOutfitsResp = JSON.parse(outfitsRaw || "{}");
+        const outfits = outfitsJson?.outfits || [];
+
+        // 3) Build outfitStack: ClosetDataItem[] per outfit
+        const built: ClosetDataItem[][] = outfits.map((o) => {
+          return o.items
+            .map((oi) => {
+              const meta = itemsById.get(oi.itemId);
+              const uri = meta?.uri || null;
+
+              // If there’s no image yet for this item (e.g., missing S3 or expired URL),
+              // we can skip it to avoid empty images in the stack.
+              if (!uri) return null;
+
+              return {
+                id: uuidToInt(oi.itemId),
+                source: { uri },
+                type: "user",
+                category: mapClothingTypeToCategory(oi.clothingType),
+              } as ClosetDataItem;
+            })
+            .filter(Boolean) as ClosetDataItem[];
+        });
+
+        // Only keep outfits that have at least one visible image
+        const filtered = built.filter((arr) => arr.length > 0);
+
+        console.log("[Home] Built outfits:", filtered.length);
+        setOutfitStack(filtered);
+
+        // Persist for offline (optional)
+        await AsyncStorage.setItem("outfitStack", JSON.stringify(filtered));
+      } catch (e) {
+        console.error("[Home] Failed to load outfits or items:", e);
+        // Fallback to cached stack if exists
+        const cached = await AsyncStorage.getItem("outfitStack");
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            setOutfitStack(parsed);
+          } catch {}
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [userId]);
+
+  // --------------------------------
+  //         SWIPE BEHAVIOR
+  // --------------------------------
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: pan.x, translationY: pan.y } }],
     { useNativeDriver: false }
   );
+
   const likeOpacityAndScale = {
     opacity: pan.x.interpolate({
       inputRange: [0, SWIPE_THRESHOLD / 2, SWIPE_THRESHOLD],
@@ -124,6 +232,7 @@ export default function HomePage() {
       },
     ],
   };
+
   const nopeOpacityAndScale = {
     opacity: pan.x.interpolate({
       inputRange: [-SWIPE_THRESHOLD, -SWIPE_THRESHOLD / 2, 0],
@@ -144,23 +253,19 @@ export default function HomePage() {
   const onHandlerStateChange = (event: any) => {
     if (event.nativeEvent.oldState === State.ACTIVE) {
       const { translationX } = event.nativeEvent;
-
       if (translationX > SWIPE_THRESHOLD) {
-        // --- SWIPE RIGHT (LIKE) ---
         Animated.timing(pan, {
           toValue: { x: width + 100, y: 0 },
-          duration: 200, // Make it disappear quickly (e.g., 200 milliseconds)
+          duration: 200,
           useNativeDriver: false,
         }).start(() => handleLike());
       } else if (translationX < -SWIPE_THRESHOLD) {
-        // --- SWIPE LEFT (NOPE) ---
         Animated.timing(pan, {
           toValue: { x: -width - 100, y: 0 },
           duration: 200,
           useNativeDriver: false,
         }).start(() => removeTopCard());
       } else {
-        // --- RETURN TO CENTER ---
         Animated.spring(pan, {
           toValue: { x: 0, y: 0 },
           friction: 4,
@@ -170,44 +275,33 @@ export default function HomePage() {
     }
   };
 
-  // 3. LOGIC FOR MODAL AND SAVING
   const handleLike = () => {
-    // Store the item and show the modal
     setSwipedItem(outfitStack[0]);
     setLikeModalVisible(true);
   };
 
   const removeTopCard = () => {
-    // Remove the card from state and reset animation
     setOutfitStack((prev) => prev.slice(1));
     pan.setValue({ x: 0, y: 0 });
   };
 
   const handleAddToWardrobe = async (isFavorite: boolean) => {
     if (!swipedItem) return;
-
     try {
-      // 1. Get existing data
       const storedUserItems = await AsyncStorage.getItem("userImages");
       const storedLikes = await AsyncStorage.getItem("likedOutfits");
-      const userItems: ClosetDataItem[] = storedUserItems
-        ? JSON.parse(storedUserItems)
-        : [];
+      const userItems: ClosetDataItem[] = storedUserItems ? JSON.parse(storedUserItems) : [];
       const likedItems: number[] = storedLikes ? JSON.parse(storedLikes) : [];
 
-      // 2. Add the new items
       const newItems = [...userItems, ...swipedItem];
       let newLikes = [...likedItems];
       if (isFavorite) {
-        const itemIds = swipedItem.map((item) => item.id);
-        newLikes = [...newLikes, ...itemIds];
+        newLikes = [...newLikes, ...swipedItem.map((i) => i.id)];
       }
 
-      // 3. Save back to storage
       await AsyncStorage.setItem("userImages", JSON.stringify(newItems));
       await AsyncStorage.setItem("likedOutfits", JSON.stringify(newLikes));
 
-      // 4. Close modal and remove card
       setLikeModalVisible(false);
       removeTopCard();
       setSwipedItem(null);
@@ -216,81 +310,14 @@ export default function HomePage() {
     }
   };
 
-  // 4. RENDER THE CARDS
-  const renderCards = () => {
-    // We reverse so the card at index 0 is on top
-    return outfitStack
-      .map((outfit, index) => {
-        // Check if this is the top card
-        if (index === 0) {
-          return (
-            <PanGestureHandler
-              key={outfit[0].id} // Use first item's ID as key
-              onGestureEvent={onGestureEvent}
-              onHandlerStateChange={onHandlerStateChange}
-            >
-              <Animated.View
-                style={[
-                  styles.outfitCard,
-                  styles.topCard,
-                  {
-                    transform: [
-                      { translateX: pan.x },
-                      { translateY: pan.y },
-                      { rotate: rotate },
-                    ],
-                    opacity: cardOpacity,
-                  },
-                ]}
-              >
-                <CardContent outfit={outfit} />
-                {/* Like / Save Indicator (Green Checkmark) */}
-                <Animated.View
-                  style={[styles.likeIndicator, likeOpacityAndScale]}
-                >
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={80}
-                    color="green"
-                  />
-                </Animated.View>
-
-                {/* Nope / Pass Indicator (Red X) */}
-                <Animated.View
-                  style={[styles.nopeIndicator, nopeOpacityAndScale]}
-                >
-                  <Ionicons name="close-circle-outline" size={80} color="red" />
-                </Animated.View>
-              </Animated.View>
-            </PanGestureHandler>
-          );
-        }
-
-        // --- Render the next card beneath it ---
-        if (index === 1) {
-          return (
-            <Animated.View
-              key={outfit[0].id}
-              style={[styles.outfitCard, styles.nextCard]}
-            >
-              <CardContent outfit={outfit} />
-            </Animated.View>
-          );
-        }
-
-        // Other cards aren't visible
-        return null;
-      })
-      .reverse(); // Crucial: reverses the .map() output
-  };
-
-  // This is the content inside each card
+  // --------------------------------
+  //            RENDER
+  // --------------------------------
   const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => (
     <>
       <View style={styles.cardImageContainer}>
         {outfit.map((item) => {
-          // Dynamically style based on category
-          let style: ImageStyle = styles.imageShirt; // Default
+          let style: ImageStyle = styles.imageShirt;
           if (item.category === "Pants") style = styles.imagePants;
           if (item.category === "Shoes") style = styles.imageShoes;
           if (item.category === "Dresses") style = styles.imageDress;
@@ -299,7 +326,6 @@ export default function HomePage() {
         })}
       </View>
 
-      {/* --- Hinge-Style Breakdown --- */}
       <View style={styles.hingeSection}>
         <Text style={styles.hingeTitle}>This outfit includes:</Text>
         <View style={styles.categoryRow}>
@@ -313,22 +339,58 @@ export default function HomePage() {
     </>
   );
 
+  const renderCards = () => {
+    return outfitStack
+      .map((outfit, index) => {
+        if (index === 0) {
+          return (
+            <PanGestureHandler
+              key={outfit[0].id}
+              onGestureEvent={onGestureEvent}
+              onHandlerStateChange={onHandlerStateChange}
+            >
+              <Animated.View
+                style={[
+                  styles.outfitCard,
+                  styles.topCard,
+                  {
+                    transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }],
+                    opacity: cardOpacity,
+                  },
+                ]}
+              >
+                <CardContent outfit={outfit} />
+                <Animated.View style={[styles.likeIndicator, likeOpacityAndScale]}>
+                  <Ionicons name="checkmark-circle-outline" size={80} color="green" />
+                </Animated.View>
+                <Animated.View style={[styles.nopeIndicator, nopeOpacityAndScale]}>
+                  <Ionicons name="close-circle-outline" size={80} color="red" />
+                </Animated.View>
+              </Animated.View>
+            </PanGestureHandler>
+          );
+        }
+        if (index === 1) {
+          return (
+            <Animated.View key={outfit[0].id} style={[styles.outfitCard, styles.nextCard]}>
+              <CardContent outfit={outfit} />
+            </Animated.View>
+          );
+        }
+        return null;
+      })
+      .reverse();
+  };
+
   return (
     <View style={{ flex: 1 }}>
-      {/* 1. Background (stays absolute, but is now a sibling) */}
       <ImageBackground
         source={require("../../assets/images/Group 32.png")}
         style={styles.background}
         imageStyle={{ resizeMode: "cover" }}
       />
 
-      {/* 2. Scrollable Content (on top of the background) */}
-      <ScrollView
-        style={styles.container} // Add this style back so the ScrollView fills the screen
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Weather Section */}
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.weatherCard}>
           <Ionicons name="sunny-outline" size={40} color="#F9E3B4" />
           <View>
@@ -337,70 +399,42 @@ export default function HomePage() {
           </View>
         </View>
 
-        {/* Outfit Description */}
         <View style={styles.textSection}>
           <Text style={styles.outfitTitle}>Today's Suggestion</Text>
-          <Text style={styles.outfitSubtitle}>
-            Swipe right to save, left to pass
-          </Text>
+          <Text style={styles.outfitSubtitle}>Swipe right to save, left to pass</Text>
         </View>
 
-        {/* 5. THE SWIPE STACK */}
         <View style={styles.cardStackContainer}>
-          {outfitStack.length > 0 ? (
+          {loading ? (
+            <Text style={styles.outfitSubtitle}>Loading outfits…</Text>
+          ) : outfitStack.length > 0 ? (
             renderCards()
           ) : (
             <View style={styles.noMoreCards}>
-              <Text style={styles.outfitTitle}>All done for today!</Text>
-              <Text style={styles.outfitSubtitle}>
-                Check back tomorrow for new outfits.
-              </Text>
+              <Text style={styles.outfitTitle}>No outfits available</Text>
+              <Text style={styles.outfitSubtitle}>Upload items to generate outfits.</Text>
             </View>
           )}
         </View>
       </ScrollView>
 
-      {/* 6. THE "LIKE" MODAL (Stays as a sibling) */}
-      <Modal
-        animationType="fade"
-        transparent
-        visible={likeModalVisible}
-        onRequestClose={() => setLikeModalVisible(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setLikeModalVisible(false)}
-        >
+      <Modal animationType="fade" transparent visible={likeModalVisible} onRequestClose={() => setLikeModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setLikeModalVisible(false)}>
           <Pressable style={styles.modalView} onPress={() => {}}>
             <Text style={styles.modalTitle}>Add to Wardrobe</Text>
-            <Text style={styles.modalText}>
-              Save this outfit to your favorites, or just to your base wardrobe?
-            </Text>
+            <Text style={styles.modalText}>Save this outfit to your favorites, or just to your base wardrobe?</Text>
 
-            <TouchableOpacity
-              style={[styles.modalButton, styles.modalButtonFavorite]}
-              onPress={() => handleAddToWardrobe(true)}
-            >
+            <TouchableOpacity style={[styles.modalButton, styles.modalButtonFavorite]} onPress={() => handleAddToWardrobe(true)}>
               <Ionicons name="heart" size={20} color="white" />
               <Text style={styles.modalButtonText}>Add to Favorites</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.modalButton, styles.modalButtonWardrobe]}
-              onPress={() => handleAddToWardrobe(false)}
-            >
+            <TouchableOpacity style={[styles.modalButton, styles.modalButtonWardrobe]} onPress={() => handleAddToWardrobe(false)}>
               <Ionicons name="add" size={20} color="#4B0082" />
-              <Text
-                style={[styles.modalButtonText, styles.modalButtonTextWardrobe]}
-              >
-                Add to Wardrobe
-              </Text>
+              <Text style={[styles.modalButtonText, styles.modalButtonTextWardrobe]}>Add to Wardrobe</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setLikeModalVisible(false)}
-              style={{ marginTop: 15 }}
-            >
+            <TouchableOpacity onPress={() => setLikeModalVisible(false)} style={{ marginTop: 15 }}>
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
           </Pressable>
@@ -410,58 +444,11 @@ export default function HomePage() {
   );
 }
 
-// 7. STYLES
+// ---------------- STYLES ----------------
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    backgroundColor: "#56088B",
-    height: 60,
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  title: {
-    color: "#fafafa",
-    fontSize: 22,
-    fontFamily: "serif",
-    fontWeight: "600",
-  },
-  background: {
-    flex: 1,
-    width: width,
-    height: height,
-    position: "absolute",
-    top: 0,
-    left: 0,
-  },
-
-  overlay: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-    backgroundColor: "transparent",
-  },
-
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "flex-start",
-    alignItems: "center",
-    width: "100%", // important
-    paddingHorizontal: 0, // remove default ScrollView padding
-    margin: 0,
-  },
-
-  screenContainer: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-  },
+  container: { flex: 1 },
+  background: { flex: 1, width, height, position: "absolute", top: 0, left: 0 },
+  scrollContent: { flexGrow: 1, justifyContent: "flex-start", alignItems: "center", width: "100%", paddingHorizontal: 0, margin: 0 },
 
   weatherCard: {
     flexDirection: "row",
@@ -476,148 +463,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     gap: 10,
   },
-  weatherText: {
-    fontWeight: "bold",
-    color: "#F9E3B4",
-    fontSize: 16,
-  },
-  weatherSub: {
-    fontSize: 13,
-    color: "#F9E3B4",
-  },
-  textSection: {
-    alignItems: "center",
-    marginVertical: 25,
-  },
-  outfitTitle: {
-    fontFamily: "monospace",
-    fontSize: 22,
-    fontWeight: "700",
-    textAlign: "center",
-    color: "#3C2A4D",
-  },
-  outfitSubtitle: {
-    fontFamily: "monospace",
-    fontSize: 14,
-    color: "#444",
-    textAlign: "center",
-  },
+  weatherText: { fontWeight: "bold", color: "#F9E3B4", fontSize: 16 },
+  weatherSub: { fontSize: 13, color: "#F9E3B4" },
+  textSection: { alignItems: "center", marginVertical: 25 },
+  outfitTitle: { fontFamily: "monospace", fontSize: 22, fontWeight: "700", textAlign: "center", color: "#3C2A4D" },
+  outfitSubtitle: { fontFamily: "monospace", fontSize: 14, color: "#444", textAlign: "center" },
 
-  // --- CARD STACK STYLES ---
-  cardStackContainer: {
-    width: width,
-    height: 550, // Set a fixed height for the stack
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
-  },
+  cardStackContainer: { width, height: 550, justifyContent: "center", alignItems: "center", marginBottom: 20 },
   outfitCard: {
     backgroundColor: "#714054",
     borderRadius: 15,
-    width: width * 0.85, // Card width
-    height: 520, // Card height
+    width: width * 0.85,
+    height: 520,
     elevation: 5,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 3,
-    position: "absolute", // This is key for stacking
-    overflow: "hidden", // Hides the "hinge" section until card is ready
+    position: "absolute",
+    overflow: "hidden",
   },
-  topCard: {
-    // This card is interactive
-  },
-  nextCard: {
-    // The card underneath
-    transform: [{ scale: 0.95 }],
-    top: 20,
-  },
-  noMoreCards: {
-    justifyContent: "center",
-    alignItems: "center",
-    height: "100%",
-  },
+  topCard: {},
+  nextCard: { transform: [{ scale: 0.95 }], top: 20 },
+  noMoreCards: { justifyContent: "center", alignItems: "center", height: "100%" },
 
-  // --- CARD CONTENT STYLES ---
-  cardImageContainer: {
-    height: "75%",
-    justifyContent: "center", // Keeps items vertically centered overall
-    alignItems: "center", // Keeps items horizontally centered overall
-    // backgroundColor: 'lightblue', // Optional: Add BG color for debugging layout
-  },
-  imageShirt: {
-    width: "80%", // Use percentage for responsiveness
-    height: "50%", // Adjust height proportion
-    resizeMode: "contain",
-    // position: 'absolute', // You might need absolute positioning for precise layering
-    top: "15%", // Adjust top position if using absolute
-    zIndex: 2, // Ensure shirt is on top
-  },
-  imagePants: {
-    width: "90%", // Use percentage
-    height: "80%", // Adjust height proportion
-    resizeMode: "contain",
-    marginTop: "-15%", // Adjust negative margin using percentage
-    // position: 'absolute',
-    top: "5%", // Adjust top position if using absolute
-    zIndex: 1, // Pants below shirt
-  },
-  imageShoes: {
-    width: "50%", // Use percentage
-    height: "30%", // Adjust height proportion
-    resizeMode: "contain",
-    marginTop: "-10%", // Adjust negative margin using percentage
-    //position: 'absolute',
-    top: "-10%", // Adjust top position if using absolute
-    zIndex: 1, // Shoes below pants
-  },
-  imageDress: {
-    width: "90%", // Use percentage for responsiveness
-    height: "90%", // Allow dress to take more space
-    resizeMode: "contain", // Changed to contain to avoid cropping dresses
-    // position: 'absolute', // If you need absolute positioning
-    // top: '5%',
-    zIndex: 1, // Ensure it layers correctly if needed
-  },
+  cardImageContainer: { height: "75%", justifyContent: "center", alignItems: "center" },
+  imageShirt: { width: "80%", height: "50%", resizeMode: "contain", top: "15%", zIndex: 2 },
+  imagePants: { width: "90%", height: "80%", resizeMode: "contain", marginTop: "-15%", top: "5%", zIndex: 1 },
+  imageShoes: { width: "50%", height: "30%", resizeMode: "contain", marginTop: "-10%", top: "-10%", zIndex: 1 },
+  imageDress: { width: "90%", height: "90%", resizeMode: "contain", zIndex: 1 },
 
-  // --- HINGE-STYLE STYLES ---
-  hingeSection: {
-    height: "25%",
-    backgroundColor: "#AB8C96",
-    borderTopWidth: 0,
-    borderColor: "#ddd",
-    padding: 15,
-  },
-  hingeTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#3C2332",
-    marginBottom: 10,
-  },
-  categoryRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  categoryTag: {
-    backgroundColor: "#714054",
-    borderRadius: 7,
-    paddingVertical: 5,
-    paddingHorizontal: 20,
-  },
-  categoryTagText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 15,
-  },
+  hingeSection: { height: "25%", backgroundColor: "#AB8C96", borderTopWidth: 0, borderColor: "#ddd", padding: 15 },
+  hingeTitle: { fontSize: 20, fontWeight: "600", color: "#3C2332", marginBottom: 10 },
+  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  categoryTag: { backgroundColor: "#714054", borderRadius: 7, paddingVertical: 5, paddingHorizontal: 20 },
+  categoryTagText: { color: "white", fontWeight: "600", fontSize: 15 },
 
-  // --- MODAL STYLES ---
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
+  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)" },
   modalView: {
     width: "85%",
     backgroundColor: "white",
@@ -630,58 +512,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 10,
-  },
-  modalText: {
-    fontSize: 16,
-    color: "#555",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  modalButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    borderRadius: 10,
-    paddingVertical: 12,
-    marginBottom: 10,
-  },
-  modalButtonFavorite: {
-    backgroundColor: "#ff0026ff",
-  },
-  modalButtonWardrobe: {
-    backgroundColor: "#E6E6FA",
-  },
-  modalButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginLeft: 10,
-  },
-  modalButtonTextWardrobe: {
-    color: "#4B0082",
-  },
-  modalCancelText: {
-    fontSize: 14,
-    color: "#767575",
-    fontWeight: "500",
-  },
-  // --- INDICATOR STYLES ---
-  likeIndicator: {
-    position: "absolute",
-    top: "30%", // Adjust positioning as needed
-    left: 20,
-    zIndex: 10, // Ensure it's above the card content
-  },
-  nopeIndicator: {
-    position: "absolute",
-    top: "30%", // Adjust positioning as needed
-    right: 20,
-    zIndex: 10, // Ensure it's above the card content
-  },
+  modalTitle: { fontSize: 22, fontWeight: "bold", color: "#333", marginBottom: 10 },
+  modalText: { fontSize: 16, color: "#555", textAlign: "center", marginBottom: 24 },
+  modalButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", borderRadius: 10, paddingVertical: 12, marginBottom: 10 },
+  modalButtonFavorite: { backgroundColor: "#ff0026ff" },
+  modalButtonWardrobe: { backgroundColor: "#E6E6FA" },
+  modalButtonText: { color: "white", fontSize: 16, fontWeight: "bold", marginLeft: 10 },
+  modalButtonTextWardrobe: { color: "#4B0082" },
+  modalCancelText: { fontSize: 14, color: "#767575", fontWeight: "500" },
+
+  likeIndicator: { position: "absolute", top: "30%", left: 20, zIndex: 10 },
+  nopeIndicator: { position: "absolute", top: "30%", right: 20, zIndex: 10 },
 });
