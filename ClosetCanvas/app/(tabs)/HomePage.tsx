@@ -1,4 +1,20 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+
+function getWeatherSummary(temp: number, description: string, wind: number): string {
+  if (temp >= 68 && temp <= 80 && !description.includes("rain")) {
+    return "Perfect Day";
+  } else if (temp < 50) {
+    return "Cold Day";
+  } else if (temp > 85) {
+    return "Hot Day";
+  } else if (description.includes("rain")) {
+    return "Rainy Day";
+  } else if (wind > 15) {
+    return "Windy";
+  } else {
+    return "Normal Day";
+  }
+}
 import {
   View,
   Text,
@@ -17,10 +33,13 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { PanGestureHandler, State } from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import { getCredentials } from "../../util/auth";
 
 const { width, height } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.3;
+const apiKey = Constants.expoConfig.extra.OPENWEATHER_API_KEY;;
 
 // -------- Types ----------
 type ClosetDataItem = {
@@ -92,6 +111,66 @@ export default function HomePage() {
   const [outfitStack, setOutfitStack] = useState<ClosetDataItem[][]>([]);
   const [likeModalVisible, setLikeModalVisible] = useState(false);
   const [swipedItem, setSwipedItem] = useState<ClosetDataItem[] | null>(null);
+
+   const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [weather, setWeather] = useState<{ temp: number; condition: string; wind: number } | null>(null);
+
+  useEffect(() => {
+     async function getCurrentLocationAndWeather() {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setErrorMsg("Permission to access location was denied");
+          return;
+        }
+
+        let loc = await Location.getCurrentPositionAsync({});
+        setLocation(loc);
+
+        // Fetch weather using lat/lon
+        const lat = loc.coords.latitude;
+        const lon = loc.coords.longitude;
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!res.ok) {
+          console.error("OpenWeather API error:", data);
+          setErrorMsg("Failed to load weather data");
+          return;
+        }
+
+        setWeather({
+          temp: data.main.temp,
+          condition: data.weather[0].main,
+          wind: data.wind.speed,
+        });
+  function getWeatherSummary(temp, description, wind) {
+    if (temp >= 20 && temp <= 27 && !description.includes("rain")) {
+      return "Perfect Day 🌞";
+    } else if (temp < 10) {
+      return "Cold Day 🧣";
+    } else if (temp > 30) {
+      return "Hot Day 🥵";
+    } else if (description.includes("rain")) {
+      return "Rainy Day ☔";
+    } else if (wind > 15) {
+      return "Windy 🌬️";
+    } else {
+      return "Normal Day 🌤️";
+    }
+  }
+      } catch (err) {
+        console.error(err);
+        setErrorMsg("Failed to get location or weather");
+      }
+    }
+
+    getCurrentLocationAndWeather();
+  }, []);
+
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -461,13 +540,31 @@ export default function HomePage() {
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.weatherCard}>
-          <Ionicons name="sunny-outline" size={40} color="#F9E3B4" />
-          <View>
-            <Text style={styles.weatherText}>Sunny</Text>
-            <Text style={styles.weatherSub}>72° - Perfect weather</Text>
-          </View>
-        </View>
+    <Ionicons name="cloud-outline" size={40} color="#F9E3B4" />
+  <View>
+    {errorMsg ? (
+      <>
+        <Text style={styles.weatherText}>Error</Text>
+        <Text style={styles.weatherSub}>{errorMsg}</Text>
+      </>
+    ) : weather ? (
+      <>
+        <Text style={styles.weatherText}>{weather.condition}</Text>
+        <Text style={styles.weatherSub}>
+          {Math.round(weather.temp)}°F - {getWeatherSummary(weather.temp, weather.condition.toLowerCase(), weather.wind)}
+        </Text>
+      </>
+    ) : (
+      <>
+        <Text style={styles.weatherText}>Loading...</Text>
+        <Text style={styles.weatherSub}>Fetching weather</Text>
+      </>
+    )}
+  </View>
+</View>
 
+
+     {/* Outfit Description */}
         <View style={styles.textSection}>
           <Text style={styles.outfitTitle}>Today's Suggestion</Text>
           <Text style={styles.outfitSubtitle}>Swipe right to save, left to pass</Text>

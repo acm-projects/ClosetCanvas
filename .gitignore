@@ -1,12 +1,17 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 
-#security
+# security
+*.env
 .env*
 *.env.local
 
 # dependencies
 node_modules/
+node_modules
+*.json
+*.env
+
 
 # Expo
 .expo/

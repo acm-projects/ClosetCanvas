@@ -8,6 +8,9 @@
     "scheme": "closetcanvas",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "extra": {
+      "OPENWEATHER_API_KEY": "8ae061ca3e7b421f68459964e6d76335"
+    },
     "ios": {
       "supportsTablet": true
     },
