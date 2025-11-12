@@ -111,31 +111,27 @@ export default function HomePage() {
   //           DATA LOAD
   // --------------------------------
   useEffect(() => {
-  (async () => {
+     (async () => {
     const creds = await getCredentials();
-    //console.log("[Home] getCredentials() →", creds);
+    console.log("[Home] Full credentials:", JSON.stringify(creds, null, 2));
     
-    // Based on your logs:
-    // creds.accessToken = "61fb15c0-d0b1-70ef-94ae-358b706515c2" (UUID/userSub)
-    // creds.uuid = "eyJraWQi..." (JWT AccessToken)
+    const actualUserId = creds?.accessToken; 
     
-    const userUUID = creds?.accessToken; // This is the actual user ID
-    
-    if (!userUUID) {
+    if (!actualUserId) {
       console.warn("[Home] No user id found in credentials.");
       Alert.alert("Not logged in", "Please log in again.");
       return;
     }
     
-    //console.log("[Home] Set userId state to:", userUUID);
-    setUserId(userUUID);
+    console.log("[Home] Setting userId to:", actualUserId);
+    setUserId(actualUserId); // ✅ Use the UUID consistently
   })();
 }, []);
 
   // single reusable loader (used on first load and after createOutfits)
   const loadOutfitStackForUser = useCallback(
   async (uid: string) => {
-    //console.log("[Home] Loading outfits for UUID:", uid);
+    console.log("[Home] Loading outfits for UUID:", uid);
     setLoading(true);
     try {
       // 1) fetch items (for URIs)
@@ -143,12 +139,12 @@ export default function HomePage() {
       console.log("[Home] GET Items URL:", itemsUrl);
       const itemsRes = await fetch(itemsUrl);
       const itemsRaw = await itemsRes.text();
-      //console.log("[Home] Items status:", itemsRes.status);
-     // console.log("[Home] Items raw (first 500 chars):", itemsRaw.substring(0, 500));
+      console.log("[Home] Items status:", itemsRes.status);
+      console.log("[Home] Items raw (first 500 chars):", itemsRaw.substring(0, 500));
       
       const itemsJson: GetClosetItemsResp = JSON.parse(itemsRaw || "{}");
       const itemsList = itemsJson?.items || [];
-      //console.log("[Home] Total items fetched:", itemsList.length);
+      console.log("[Home] Total items fetched:", itemsList.length);
 
       const itemsById = new Map<
         string,
@@ -158,35 +154,35 @@ export default function HomePage() {
         const key = (it.id || it.item_id || "").toString();
         if (key) {
           itemsById.set(key, { uri: it.uri, clothingType: it.clothingType });
-          //console.log("[Home] Added item to map:", key, "clothingType:", it.clothingType);
+          console.log("[Home] Added item to map:", key, "clothingType:", it.clothingType);
         }
       }
-      //console.log("[Home] itemsById size:", itemsById.size);
+      console.log("[Home] itemsById size:", itemsById.size);
 
       // 2) fetch outfits
       const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(uid)}`;
       console.log("[Home] GET Outfits URL:", outfitsUrl);
       const outfitsRes = await fetch(outfitsUrl);
       const outfitsRaw = await outfitsRes.text();
-      //console.log("[Home] Outfits status:", outfitsRes.status);
-      //console.log("[Home] Outfits RAW response:", outfitsRaw); // ✅ KEY LOG
+      console.log("[Home] Outfits status:", outfitsRes.status);
+      console.log("[Home] Outfits RAW response:", outfitsRaw); // ✅ KEY LOG
       
       const outfitsJson: GetOutfitsResp = JSON.parse(outfitsRaw || "{}");
-      //console.log("[Home] Outfits JSON parsed:", JSON.stringify(outfitsJson, null, 2)); // ✅ KEY LOG
+      console.log("[Home] Outfits JSON parsed:", JSON.stringify(outfitsJson, null, 2)); // ✅ KEY LOG
       
       const outfits = outfitsJson?.outfits || [];
 
-      //console.log("First outfit:", JSON.stringify(outfits[0], null, 2));
-      //console.log("[Home] Outfits returned from backend:", outfits.length);
+      console.log("First outfit:", JSON.stringify(outfits[0], null, 2));
+      console.log("[Home] Outfits returned from backend:", outfits.length);
 
       // 3) build stack
       const built: ClosetDataItem[][] = outfits.map((o, idx) => {
         console.log(`[Home] Processing outfit ${idx}:`, o.outfit_id, "with", o.items?.length, "items");
         return o.items
           .map((oi) => {
-            //console.log("[Home] Looking up itemId:", oi.itemId);
+            console.log("[Home] Looking up itemId:", oi.itemId);
             const meta = itemsById.get(oi.itemId);
-            //console.log("[Home] Found meta:", meta ? `URI exists: ${!!meta.uri}` : "NOT FOUND");
+            console.log("[Home] Found meta:", meta ? `URI exists: ${!!meta.uri}` : "NOT FOUND");
             const uri = meta?.uri || null;
             if (!uri) {
               console.warn("[Home] ⚠️ No URI for item:", oi.itemId);
@@ -203,7 +199,7 @@ export default function HomePage() {
       });
 
       const filtered = built.filter((arr) => arr.length > 0);
-      //console.log("[Home] Built outfits for display:", filtered.length);
+      console.log("[Home] Built outfits for display:", filtered.length);
       setOutfitStack(filtered);
       await AsyncStorage.setItem("outfitStack", JSON.stringify(filtered));
     } catch (e) {
@@ -222,9 +218,18 @@ export default function HomePage() {
   []
 );
 
+
   useEffect(() => {
-    if (userId) loadOutfitStackForUser(userId);
-  }, [userId, loadOutfitStackForUser]);
+    if (userId) {
+      loadOutfitStackForUser(userId).then(() => {
+        // If no outfits exist after loading, create them
+        if (outfitStack.length === 0) {
+          console.log("[Home] No outfits found, triggering createOutfits...");
+          createOutfitsAndReload();
+        }
+      });
+    }
+  }, [userId]);
 
   // --------------------------------
   //     CREATE OUTFITS WHEN EMPTY
