@@ -151,8 +151,8 @@ export default function ClosetPage() {
     try {
       const res = await fetch(url);
       const raw = await res.text();
-      console.log("[GET] Status:", res.status);
-      console.log("[GET] Raw body:", raw);
+      //console.log("[GET] Status:", res.status);
+      //console.log("[GET] Raw body:", raw);
 
       const json: GetItemsResponse = JSON.parse(raw || "{}");
       const items = json.items || [];
@@ -169,7 +169,7 @@ export default function ClosetPage() {
       }));
 
 
-      console.log("[GET] Mapped ClosetDataItems:", serverItems);
+      //console.log("[GET] Mapped ClosetDataItems:", serverItems);
       setUserImages(serverItems);
       await AsyncStorage.setItem("userImages", JSON.stringify(serverItems));
     } catch (e) {

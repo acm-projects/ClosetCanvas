@@ -117,12 +117,14 @@ export default function HomePage() {
       // ⚠️ Auth stays exactly like your working code:
       // we set userId to creds.accessToken
       const uid = creds?.uuid || creds?.accessToken || null;
+       console.log("[Home] Using userId:", uid);
       if (!uid) {
         console.warn("[Home] No user id found in credentials.");
         Alert.alert("Not logged in", "Please log in again.");
         return;
       }
       setUserId(creds.accessToken);
+       console.log("[Home] Set userId state to:", creds.accessToken);
     })();
   }, []);
 
@@ -135,11 +137,11 @@ export default function HomePage() {
         const itemsUrl = `${ITEMS_URL}?user_id=${encodeURIComponent(
           uid
         )}&signed=1&expiresIn=3600`;
-        console.log("[Home] GET Items URL:", itemsUrl);
+        //console.log("[Home] GET Items URL:", itemsUrl);
         const itemsRes = await fetch(itemsUrl);
         const itemsRaw = await itemsRes.text();
-        console.log("[Home] Items status:", itemsRes.status);
-        console.log("[Home] Items raw:", itemsRaw);
+        //console.log("[Home] Items status:", itemsRes.status);
+        //console.log("[Home] Items raw:", itemsRaw);
         const itemsJson: GetClosetItemsResp = JSON.parse(itemsRaw || "{}");
         const itemsList = itemsJson?.items || [];
 
@@ -151,17 +153,21 @@ export default function HomePage() {
           const key = (it.id || it.item_id || "").toString();
           if (key) itemsById.set(key, { uri: it.uri, clothingType: it.clothingType });
         }
-        console.log("[Home] itemsById keys:", Array.from(itemsById.keys()).length);
+        //console.log("[Home] itemsById keys:", Array.from(itemsById.keys()).length);
 
         // 2) fetch outfits
         const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(uid)}`;
-        console.log("[Home] GET Outfits URL:", outfitsUrl);
+        //console.log("[Home] GET Outfits URL:", outfitsUrl);
         const outfitsRes = await fetch(outfitsUrl);
         const outfitsRaw = await outfitsRes.text();
-        console.log("[Home] Outfits status:", outfitsRes.status);
-        console.log("[Home] Outfits raw:", outfitsRaw);
+        //console.log("[Home] Outfits status:", outfitsRes.status);
+        //console.log("[Home] Outfits raw:", outfitsRaw);
         const outfitsJson: GetOutfitsResp = JSON.parse(outfitsRaw || "{}");
+        
         const outfits = outfitsJson?.outfits || [];
+
+        console.log("First outfit:", JSON.stringify(outfitsJson.outfits?.[0], null, 2));
+        console.log("[Home] Outfits returned from backend:", outfits.length);
 
         // 3) build stack
         const built: ClosetDataItem[][] = outfits.map((o) =>
@@ -181,7 +187,7 @@ export default function HomePage() {
         );
 
         const filtered = built.filter((arr) => arr.length > 0);
-        console.log("[Home] Built outfits:", filtered.length);
+        console.log("[Home] Built outfits for display:", filtered.length);
         setOutfitStack(filtered);
         await AsyncStorage.setItem("outfitStack", JSON.stringify(filtered));
       } catch (e) {
@@ -210,14 +216,14 @@ export default function HomePage() {
   const createOutfitsAndReload = useCallback(async () => {
     if (!userId) return;
     try {
-      console.log("[CreateOutfits] POST", CREATE_OUTFITS_URL);
+      //console.log("[CreateOutfits] POST", CREATE_OUTFITS_URL);
       const body = {
         userId,               // ⚠️ Uses the user's UserID from state (your working auth)
         style: "minimal",
         numberOfOutfits: 3,
         outfitTypes: [1, 2],
       };
-      console.log("[CreateOutfits] body:", body);
+      //console.log("[CreateOutfits] body:", body);
 
       const res = await fetch(CREATE_OUTFITS_URL, {
         method: "POST",
