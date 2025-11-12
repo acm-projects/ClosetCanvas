@@ -192,7 +192,7 @@ export default function HomePage() {
   useEffect(() => {
      (async () => {
     const creds = await getCredentials();
-    console.log("[Home] Full credentials:", JSON.stringify(creds, null, 2));
+    //console.log("[Home] Full credentials:", JSON.stringify(creds, null, 2));
     
     const actualUserId = creds?.accessToken; 
     
@@ -202,7 +202,7 @@ export default function HomePage() {
       return;
     }
     
-    console.log("[Home] Setting userId to:", actualUserId);
+    //console.log("[Home] Setting userId to:", actualUserId);
     setUserId(actualUserId); // ✅ Use the UUID consistently
   })();
 }, []);
@@ -210,16 +210,16 @@ export default function HomePage() {
   // single reusable loader (used on first load and after createOutfits)
   const loadOutfitStackForUser = useCallback(
   async (uid: string) => {
-    console.log("[Home] Loading outfits for UUID:", uid);
+    //console.log("[Home] Loading outfits for UUID:", uid);
     setLoading(true);
     try {
       // 1) fetch items (for URIs)
       const itemsUrl = `${ITEMS_URL}?user_id=${encodeURIComponent(uid)}&signed=1&expiresIn=3600`;
-      console.log("[Home] GET Items URL:", itemsUrl);
+      //console.log("[Home] GET Items URL:", itemsUrl);
       const itemsRes = await fetch(itemsUrl);
       const itemsRaw = await itemsRes.text();
-      console.log("[Home] Items status:", itemsRes.status);
-      console.log("[Home] Items raw (first 500 chars):", itemsRaw.substring(0, 500));
+      //console.log("[Home] Items status:", itemsRes.status);
+      //console.log("[Home] Items raw (first 500 chars):", itemsRaw.substring(0, 500));
       
       const itemsJson: GetClosetItemsResp = JSON.parse(itemsRaw || "{}");
       const itemsList = itemsJson?.items || [];
@@ -233,26 +233,26 @@ export default function HomePage() {
         const key = (it.id || it.item_id || "").toString();
         if (key) {
           itemsById.set(key, { uri: it.uri, clothingType: it.clothingType });
-          console.log("[Home] Added item to map:", key, "clothingType:", it.clothingType);
+          //console.log("[Home] Added item to map:", key, "clothingType:", it.clothingType);
         }
       }
-      console.log("[Home] itemsById size:", itemsById.size);
+      //console.log("[Home] itemsById size:", itemsById.size);
 
       // 2) fetch outfits
       const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(uid)}`;
-      console.log("[Home] GET Outfits URL:", outfitsUrl);
+      //console.log("[Home] GET Outfits URL:", outfitsUrl);
       const outfitsRes = await fetch(outfitsUrl);
       const outfitsRaw = await outfitsRes.text();
-      console.log("[Home] Outfits status:", outfitsRes.status);
-      console.log("[Home] Outfits RAW response:", outfitsRaw); // ✅ KEY LOG
+      //console.log("[Home] Outfits status:", outfitsRes.status);
+      //console.log("[Home] Outfits RAW response:", outfitsRaw); // ✅ KEY LOG
       
       const outfitsJson: GetOutfitsResp = JSON.parse(outfitsRaw || "{}");
-      console.log("[Home] Outfits JSON parsed:", JSON.stringify(outfitsJson, null, 2)); // ✅ KEY LOG
+      //console.log("[Home] Outfits JSON parsed:", JSON.stringify(outfitsJson, null, 2)); // ✅ KEY LOG
       
       const outfits = outfitsJson?.outfits || [];
 
-      console.log("First outfit:", JSON.stringify(outfits[0], null, 2));
-      console.log("[Home] Outfits returned from backend:", outfits.length);
+      //console.log("First outfit:", JSON.stringify(outfits[0], null, 2));
+      //console.log("[Home] Outfits returned from backend:", outfits.length);
 
       // 3) build stack
       const built: ClosetDataItem[][] = outfits.map((o, idx) => {
