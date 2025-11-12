@@ -213,8 +213,8 @@ export default function HomePage() {
       console.log("[CreateOutfits] POST", CREATE_OUTFITS_URL);
       const body = {
         userId,               // ⚠️ Uses the user's UserID from state (your working auth)
-        style: "y2k",
-        numberOfOutfits: 1,
+        style: "minimal",
+        numberOfOutfits: 3,
         outfitTypes: [1, 2],
       };
       console.log("[CreateOutfits] body:", body);
