@@ -654,10 +654,10 @@ const styles = StyleSheet.create({
   noMoreCards: { justifyContent: "center", alignItems: "center", height: "100%" },
 
   cardImageContainer: { height: "75%", justifyContent: "center", alignItems: "center" },
-  imageShirt: { width: "80%", height: "50%", resizeMode: "contain", top: "15%", zIndex: 2 },
-  imagePants: { width: "90%", height: "80%", resizeMode: "contain", marginTop: "-15%", top: "5%", zIndex: 1 },
-  imageShoes: { width: "50%", height: "30%", resizeMode: "contain", marginTop: "-10%", top: "-10%", zIndex: 1 },
-  imageDress: { width: "90%", height: "90%", resizeMode: "contain", zIndex: 1 },
+  imageShirt: { width: 210, height: 230, resizeMode: "contain", marginHorizontal: 4, marginBottom: -25, zIndex: 2 },
+  imagePants: { width: 180, height: 234, resizeMode: "contain", marginHorizontal: 4,marginTop: -35, zIndex: 1 },
+  imageShoes: { width: 70, height: 50, resizeMode: "contain", marginHorizontal: 4, zIndex: 1, alignSelf: "flex-end" },
+  imageDress: { width: 110, height: 160, resizeMode: "contain", marginHorizontal: 4, zIndex: 1 },
 
   hingeSection: { height: "25%", backgroundColor: "#AB8C96", borderTopWidth: 0, borderColor: "#ddd", padding: 15 },
   hingeTitle: { fontSize: 20, fontWeight: "600", color: "#3C2332", marginBottom: 10 },
