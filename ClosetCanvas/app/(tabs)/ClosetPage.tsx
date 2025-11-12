@@ -94,6 +94,8 @@ const ClosetCard = React.memo(
     onDelete: (id: number) => void;
   }) => {
     const [randomHeight] = useState(Math.floor(Math.random() * 100) + 180);
+
+    
     return (
       <Pressable onLongPress={() => onDelete(item.id)}>
         <View style={styles.card}>
@@ -118,12 +120,8 @@ export default function ClosetPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const initialLocalData: ClosetDataItem[] = [
-    { id: 11, source: require("../../assets/images/hoodie.png"), type: "local", category: "Tops" },
-    { id: 12, source: require("../../assets/images/pants.png"), type: "local", category: "Pants" },
-    { id: 13, source: require("../../assets/images/shoes.png"), type: "local", category: "Shoes" },
-    { id: 21, source: require("../../assets/images/dress.png"), type: "local", category: "Dresses" },
-  ];
+  const initialLocalData: ClosetDataItem[] = [];
+
   const [localItems, setLocalItems] = useState<ClosetDataItem[]>(initialLocalData);
 
   // ---------------------- Init ----------------------
@@ -148,7 +146,7 @@ export default function ClosetPage() {
   const refreshFromServer = useCallback(async () => {
     if (!userId) return;
     const url = `${API_ENDPOINT}?user_id=${encodeURIComponent(userId)}&signed=1&expiresIn=3600`;
-    console.log("[GET] Request URL:", url);
+    // console.log("[GET] Request URL:", url);
 
     try {
       const res = await fetch(url);
@@ -161,14 +159,15 @@ export default function ClosetPage() {
 
       console.log("[GET] Parsed items:", items.length);
 
-      const serverItems: ClosetDataItem[] = items
-        .filter((it) => !!it?.uri)
-        .map((it) => ({
-          id: uuidToInt(String(it.id || it.item_id || "")),
-          source: { uri: it.uri! },
-          type: "user",
-          category: mapClothingTypeToCategory(it.clothingType),
-        }));
+      const serverItems: ClosetDataItem[] = (json.items || [])
+      .filter((it) => it.uri && typeof it.uri === "string" && it.uri.trim() !== "")
+      .map((it) => ({
+        id: uuidToInt(String(it.id || it.item_id || "")),
+        source: { uri: it.uri! },
+        type: "user",
+        category: mapClothingTypeToCategory(it.clothingType),
+      }));
+
 
       console.log("[GET] Mapped ClosetDataItems:", serverItems);
       setUserImages(serverItems);
@@ -195,7 +194,7 @@ export default function ClosetPage() {
       filetype: mimeType || "image/jpeg",
     };
 
-    console.log("[POST] Sending upload:", { ...body, image: `<base64 len=${base64Image.length}>` });
+    // console.log("[POST] Sending upload:", { ...body, image: `<base64 len=${base64Image.length}>` });
 
     setIsLoading(true);
     try {
@@ -206,7 +205,7 @@ export default function ClosetPage() {
       });
 
       const raw = await res.text();
-      console.log("[POST] Status:", res.status, "Raw:", raw);
+      // console.log("[POST] Status:", res.status, "Raw:", raw);
 
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
       Alert.alert("Success", "Image uploaded.");
@@ -225,7 +224,7 @@ export default function ClosetPage() {
     if (!permission.granted) return alert("Permission to access media library required.");
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.7,
       base64: true,
     });
@@ -295,11 +294,14 @@ export default function ClosetPage() {
     return allData.filter((x) => x.category === activeCategory);
   }, [allData, activeCategory, likedOutfits]);
 
+  
+
 // 1) Replace your current renderMasonryItem with this:
 const renderMasonryItem = useCallback(
   ({ item, i }: { item: unknown; i: number }) => {
     const it = item as ClosetDataItem;
     const isLiked = likedOutfits.includes(it.id);
+    
     return (
       <ClosetCard
         item={it}
