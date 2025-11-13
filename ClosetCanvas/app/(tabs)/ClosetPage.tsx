@@ -18,28 +18,13 @@ import * as ImagePicker from "expo-image-picker";
 import MasonryList from "@react-native-seoul/masonry-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCredentials } from "../../util/auth";
-import {
-  User,
-  FolderClosed,
-  Heart,
-  Shirt,
-  Footprints,
-  Snowflake,
-  Image as ImageIcon, 
-  Plus,
-  Camera,
-  PersonStanding, 
-  UserRoundPen,
-  VenetianMask,
-  LucideIcon,
-} from "lucide-react-native";
+
 // ---------------------- Types ----------------------
 type ClosetDataItem = {
   id: number;
-  uri?: string;
-  source?: { uri: string };
-  type?: string;
-  category?: string;
+  source: ImageSourcePropType; // require(...) or { uri: string }
+  type: "local" | "user";
+  category: string;
 };
 
 type Credentials = { uuid?: string; accessToken?: string };
@@ -82,25 +67,16 @@ const mapClothingTypeToCategory = (t?: number | null): string => {
 
 const CATEGORIES = ["All", "Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
 
-const CATEGORY_ICONS: Record<string, LucideIcon> = {
-  All: FolderClosed,
-  Favorites: Heart,
-  Tops: Shirt,
-  Pants: PersonStanding,
-  Dresses: VenetianMask,
-  Shoes: Footprints,
-  Jackets: Snowflake,
-  "User Upload": ImageIcon,
+const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  All: "apps-outline",
+  Favorites: "heart",
+  Tops: "shirt-outline",
+  Pants: "walk-outline",
+  Dresses: "woman-outline",
+  Shoes: "footsteps-outline",
+  Jackets: "snow-outline",
+  "User Upload": "images-outline",
 };
-
-
-type Outfit = {
-  id: number;
-  items: ClosetDataItem[];
-};
-
-
-
 
 const API_ENDPOINT = "https://3a42g82o4d.execute-api.us-east-2.amazonaws.com/dev/s3v2";
 
@@ -172,7 +148,7 @@ export default function ClosetPage() {
     const creds = (await getCredentials()) as Credentials;
     //console.log("[Creds] getCredentials() →", creds);
     // ✅ use uuid as your API's user_id
-    if (creds?.uuid && typeof creds.accessToken === 'string') setUserId(creds.accessToken);
+    if (creds?.uuid) setUserId(creds.accessToken);
     else console.warn("[Creds] No credentials found. User not logged in.");
   };
 
@@ -316,11 +292,13 @@ const toggleLike = useCallback((outfitId: number) => {
   }
 
   function onTakePhoto() {
+    console.log('onTakePhoto called');
     takePhoto();
     setModalVisible(false);
   }
 
   function onPickImage() {
+    console.log('onPickImage called');
     pickImage();
     setModalVisible(false);
   }
