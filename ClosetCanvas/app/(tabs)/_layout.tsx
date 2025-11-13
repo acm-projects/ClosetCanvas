@@ -38,7 +38,10 @@ export default function TabLayout() {
         <View style={styles.mergedBar}>
           <View style={styles.iconRow}>
             {[
-              { label: "Wardrobe", icon: Shirt, route: "ClosetPage" },
+              { label: "Wardrobe", 
+                icon: Shirt, 
+                route: "ClosetPage" 
+              },
               {
                 label: "Planner",
                 icon: CalendarDays,
