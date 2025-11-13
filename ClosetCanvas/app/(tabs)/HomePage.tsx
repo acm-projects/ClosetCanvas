@@ -39,7 +39,7 @@ import { getCredentials } from "../../util/auth";
 
 const { width, height } = Dimensions.get("window");
 const SWIPE_THRESHOLD = width * 0.3;
-const apiKey = Constants.expoConfig.extra.OPENWEATHER_API_KEY;;
+const apiKey = Constants.expoConfig.extra.OPENWEATHER_API_KEY;
 
 // -------- Types ----------
 type ClosetDataItem = {

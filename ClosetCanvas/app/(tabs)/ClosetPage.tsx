@@ -79,6 +79,7 @@ const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 const API_ENDPOINT = "https://3a42g82o4d.execute-api.us-east-2.amazonaws.com/dev/s3v2";
+const bgApi = Constants.expoConfig.extra.BG_REMOVAL_API_KEY;
 
 // ---------------------- ClosetCard ----------------------
 const ClosetCard = React.memo(
@@ -207,19 +208,60 @@ export default function ClosetPage() {
 
     setIsLoading(true);
     try {
-      const res = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      // 1 Send image to background removal API (demo.api4ai.cloud)
+     const formData = new FormData();
+    formData.append("image_file", {
+      uri: `data:${mimeType};base64,${base64Image}`,
+      name: "upload.jpg",
+      type: mimeType,
+    });
 
-      const raw = await res.text();
-      // console.log("[POST] Status:", res.status, "Raw:", raw);
+    const bgResponse = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: { "X-Api-Key": bgApi },
+    body: formData,
+  });
 
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-      Alert.alert("Success", "Image uploaded.");
-      await refreshFromServer();
-    } catch (e) {
+    const arrayBuffer = await bgResponse.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+}
+const bgRemovedBase64 = btoa(binary);
+
+    if (!bgRemovedBase64) {
+      throw new Error("No background-removed image returned");
+    }
+
+
+    // 2 Upload the background-removed image to your S3 API
+    const body = {
+      user_id: userId,
+      image: bgRemovedBase64,
+      filetype: "png",
+    };
+
+    const response = await fetch(API_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: userToken,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        responseData.message ||
+          "Upload failed with status: " + response.status
+      );
+    }
+
+    Alert.alert("Successful Upload");
+  } catch (e) {
       console.error("[POST] Error:", e);
       Alert.alert("Upload Failed", e instanceof Error ? e.message : "Error occurred.");
     } finally {
@@ -229,16 +271,28 @@ export default function ClosetPage() {
 
   // ---------------------- Pickers ----------------------
   const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return alert("Permission to access media library required.");
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.7,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.[0]?.base64 && result.assets?.[0]?.mimeType)
-      await uploadImage(result.assets[0].base64, result.assets[0].mimeType);
+    console.log('pickImage called');
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('Media library permission:', permission);
+      if (!permission.granted) {
+        alert("Permission to access media library required.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images',
+        allowsEditing: false,
+        quality: 0.7,
+        base64: true,
+      });
+      console.log('ImagePicker result:', result);
+      if (!result.canceled && result.assets?.[0]?.base64 && result.assets?.[0]?.mimeType) {
+        await uploadImage(result.assets[0].base64, result.assets[0].mimeType);
+      }
+    } catch (e) {
+      console.error('pickImage error:', e);
+      alert('Error opening image picker: ' + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   const takePhoto = async () => {
@@ -435,12 +489,12 @@ const ActiveCategoryIcon = CATEGORY_ICONS[activeCategory] || FolderClosed;
           <Pressable style={styles.modalView}>
             <Text style={styles.modalTitle}>Add to Closet</Text>
 
-            <TouchableOpacity style={styles.modalButton} onPress={onTakePhoto}>
+            <TouchableOpacity style={styles.modalButton} onPress={takePhoto}>
               <Ionicons name="camera" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Take Photo</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.modalButton} onPress={onPickImage}>
+            <TouchableOpacity style={styles.modalButton} onPress={pickImage}>
               <Ionicons name="image" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Choose from Library</Text>
             </TouchableOpacity>

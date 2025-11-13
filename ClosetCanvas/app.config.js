@@ -13,6 +13,7 @@ export default {
     newArchEnabled: true,
     extra: {
       OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY,
+      BG_REMOVAL_API_KEY: process.env.BG_REMOVAL_API_KEY,
     },
     ios: {
       supportsTablet: true,
