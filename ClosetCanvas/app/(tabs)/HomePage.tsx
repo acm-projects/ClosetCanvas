@@ -161,21 +161,6 @@ export default function HomePage() {
           condition: data.weather[0].main,
           wind: data.wind.speed,
         });
-  function getWeatherSummary(temp: number, description: string, wind: number): string {
-    if (temp >= 20 && temp <= 27 && !description.includes("rain")) {
-      return "Perfect Day 🌞";
-    } else if (temp < 10) {
-      return "Cold Day 🧣";
-    } else if (temp > 30) {
-      return "Hot Day 🥵";
-    } else if (description.includes("rain")) {
-      return "Rainy Day ☔";
-    } else if (wind > 15) {
-      return "Windy 🌬️";
-    } else {
-      return "Normal Day 🌤️";
-    }
-  }
       } catch (err) {
         console.error(err);
         setErrorMsg("Failed to get location or weather");
