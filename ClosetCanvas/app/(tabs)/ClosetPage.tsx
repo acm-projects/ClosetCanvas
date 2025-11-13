@@ -36,7 +36,10 @@ import {
 // ---------------------- Types ----------------------
 type ClosetDataItem = {
   id: number;
-  uri: string;
+  uri?: string;
+  source?: { uri: string };
+  type?: string;
+  category?: string;
 };
 
 type Credentials = { uuid?: string; accessToken?: string };
@@ -93,7 +96,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 
 type Outfit = {
   id: number;
-  items: ClosetItem[];
+  items: ClosetDataItem[];
 };
 
 
@@ -116,26 +119,25 @@ const ClosetCard = React.memo(
   }) => {
     const [randomHeight] = useState(Math.floor(Math.random() * 100) + 180);
 
-    
+    // Remove handleLongPress, use onLongPress to trigger delete
     return (
-      <Pressable onLongPress={handleLongPress}>
-      <View style={styles.card}>
-        <Image
-          source={item.source}
-          // We now use the stable height from our state
-          style={[styles.userImage, { height: randomHeight }]}
-        />
-        <TouchableOpacity
-          style={styles.heart}
-          onPress={() => onToggleLike(item.id)}
-        >
-          <Ionicons
-            name={isLiked ? "heart" : "heart-outline"}
-            size={30}
-            color={isLiked ? "#DE8672" : "#333"}
+      <Pressable onLongPress={() => onDelete(item.id)}>
+        <View style={styles.card}>
+          <Image
+            source={item.source}
+            style={[styles.userImage, { height: randomHeight }]}
           />
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.heart}
+            onPress={() => onToggleLike(item.id)}
+          >
+            <Ionicons
+              name={isLiked ? "heart" : "heart-outline"}
+              size={30}
+              color={isLiked ? "#DE8672" : "#333"}
+            />
+          </TouchableOpacity>
+        </View>
       </Pressable>
     );
   }
@@ -170,7 +172,7 @@ export default function ClosetPage() {
     const creds = (await getCredentials()) as Credentials;
     //console.log("[Creds] getCredentials() →", creds);
     // ✅ use uuid as your API's user_id
-    if (creds?.uuid) setUserId(creds.accessToken);
+    if (creds?.uuid && typeof creds.accessToken === 'string') setUserId(creds.accessToken);
     else console.warn("[Creds] No credentials found. User not logged in.");
   };
 
@@ -192,13 +194,13 @@ export default function ClosetPage() {
       console.log("[GET] Parsed items:", items.length);
 
       const serverItems: ClosetDataItem[] = (json.items || [])
-      .filter((it) => it.uri && typeof it.uri === "string" && it.uri.trim() !== "")
-      .map((it) => ({
-        id: uuidToInt(String(it.id || it.item_id || "")),
-        source: { uri: it.uri! },
-        type: "user",
-        category: mapClothingTypeToCategory(it.clothingType),
-      }));
+        .filter((it) => it.uri && typeof it.uri === "string" && it.uri.trim() !== "")
+        .map((it) => ({
+          id: uuidToInt(String(it.id || it.item_id || "")),
+          source: { uri: it.uri! },
+          type: "user",
+          category: mapClothingTypeToCategory(it.clothingType),
+        }));
 
 
       //console.log("[GET] Mapped ClosetDataItems:", serverItems);
@@ -219,7 +221,6 @@ export default function ClosetPage() {
       Alert.alert("Error", "You are not logged in.");
       return;
     }
-
     const body = {
       user_id: userId,
       image: base64Image,
@@ -308,103 +309,7 @@ const toggleLike = useCallback((outfitId: number) => {
          );
         }, []); // <-- Add empty dependency array
 
-  // Upload image to S3 via API
-  const uploadImage = async (base64Image: string, mimeType: string) => {
-    setModalVisible(false);
-    setIsLoading(true);
-
-    if (!userId || !userToken) {
-      Alert.alert("Error", "You are not logged in. Please restart the app.");
-      setIsLoading(false);
-      return;
-    }
-
-    const body = {
-      user_id: userId,
-      image: base64Image,
-      filetype: mimeType || "image/jpeg",
-    };
-
-    try {
-      const response = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: userToken,
-        },
-        body: JSON.stringify(body),
-      });
-
-      const responseData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          responseData.message ||
-            "Upload failed with status: " + response.status
-        );
-      }
-
-      Alert.alert("Success!", "Your item has been added.");
-
-      // Also add to local state for immediate display
-      const newItem: ClosetDataItem = {
-        id: Date.now(),
-        source: { uri: `data:${mimeType};base64,${base64Image}` },
-        type: "user",
-        category: "User Upload",
-      };
-      setUserImages([...userImages, newItem]);
-    } catch (error) {
-      console.error("Upload error:", error);
-      Alert.alert(
-        "Upload Failed",
-        error instanceof Error ? error.message : "Could not upload image."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  async function pickImage() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      alert("Permission to access media library is required!");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 4],
-      quality: 0.8,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
-      const asset = result.assets[0];
-      if (asset.base64 && asset.mimeType) {
-        await uploadImage(asset.base64, asset.mimeType);
-      }
-    }
-  }
-
-  async function takePhoto() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      alert("Permission to access camera is required!");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 4],
-      quality: 0.8,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
-      const asset = result.assets[0];
-      if (asset.base64 && asset.mimeType) {
-        await uploadImage(asset.base64, asset.mimeType);
-      }
-    }
-  }
+  
 
   function imageSelecter() {
     setModalVisible(true);
@@ -449,12 +354,6 @@ const toggleLike = useCallback((outfitId: number) => {
   };
   const cancelDelete = () => setDeleteModalVisible(false);
 
-  const toggleLike = useCallback(
-    (id: number) =>
-      setLikedOutfits((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])),
-    []
-  );
-
   const allData = useMemo(() => [...localItems, ...userImages], [localItems, userImages]);
 
   const filteredData = useMemo(() => {
@@ -494,11 +393,11 @@ const ActiveCategoryIcon = CATEGORY_ICONS[activeCategory] || FolderClosed;
 <View style={styles.subtitleRow}>
   
   <Ionicons
-    name={CATEGORY_ICONS[activeCategory] || "grid-outline"}
+    name={activeCategory === "Favorites" ? "heart" : activeCategory === "Tops" ? "shirt" : activeCategory === "Pants" ? "man" : activeCategory === "Dresses" ? "woman" : activeCategory === "Shoes" ? "walk" : activeCategory === "Jackets" ? "snow" : "grid-outline"}
     size={40}
-    marginTop = {45}
+    marginTop={45}
     color="#714054"
-    style={{ marginRight: 10, marginTop:40, marginLeft:20 }}
+    style={{ marginRight: 10, marginTop: 40, marginLeft: 20 }}
   />
   <Text style={styles.subtitle}>
     {activeCategory === "All" ? "Wardrobe" : activeCategory}
@@ -638,7 +537,6 @@ const styles = StyleSheet.create({
     color: "#2E2E2E",
     fontWeight: "600",
     fontSize: 16,
-    color: "#555",
     textAlign: "center",
     marginBottom: 24,
   },

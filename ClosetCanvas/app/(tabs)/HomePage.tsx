@@ -45,8 +45,11 @@ const apiKey = Constants.expoConfig.extra.OPENWEATHER_API_KEY;;
 type ClosetDataItem = {
   id: number;
   source: any; // { uri } or require(...)
-  type: "local" | "user";
-  category: string;
+  type?: string;
+  category?: string;
+  description?: string;
+  goodFor?: string[];
+  event?: string[];
 };
 
 const shuffleArray = (array: any[]) => {
@@ -158,7 +161,7 @@ export default function HomePage() {
           condition: data.weather[0].main,
           wind: data.wind.speed,
         });
-  function getWeatherSummary(temp, description, wind) {
+  function getWeatherSummary(temp: number, description: string, wind: number): string {
     if (temp >= 20 && temp <= 27 && !description.includes("rain")) {
       return "Perfect Day 🌞";
     } else if (temp < 10) {
@@ -210,7 +213,10 @@ export default function HomePage() {
     outputRange: ["180deg", "360deg"],
   });
   const generateNewOutfits = () => {
-    setOutfitStack(shuffleArray(outfitsData));
+    // Instead of using undefined outfitsData, reload outfits for the user
+    if (userId) {
+      loadOutfitStackForUser(userId);
+    }
   };
   // --------------------------------
   //           DATA LOAD
@@ -464,21 +470,6 @@ export default function HomePage() {
     setIsFlipped(!isFlipped);
   };
 
-  const onLongPressStateChange = (event: any) => {
-    if (event.nativeEvent.state === State.ACTIVE) {
-      handleFlip();
-    }
-  };
-
-  const handleFlip = () => {
-    const toValue = isFlipped ? 0 : 1;
-    Animated.spring(flipAnim, {
-      toValue,
-      friction: 8,
-      useNativeDriver: true, 
-    }).start();
-    setIsFlipped(!isFlipped);
-  };
 
     // 3. LOGIC FOR MODAL AND SAVING
   const handleLike = () => {
@@ -529,31 +520,7 @@ export default function HomePage() {
   // --------------------------------
   //            RENDER
   // --------------------------------
-  const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => (
-    <>
-      <View style={styles.cardImageContainer}>
-        {outfit.map((item, idx) => {
-          let style: ImageStyle = styles.imageShirt;
-          if (item.category === "Pants") style = styles.imagePants;
-          if (item.category === "Shoes") style = styles.imageShoes;
-          if (item.category === "Dresses") style = styles.imageDress;
-
-          return <Image key={item.id + '-' + idx} source={item.source} style={style} />;
-        })}
-      </View>
-
-      <View style={styles.hingeSection}>
-        <Text style={styles.hingeTitle}>This outfit includes:</Text>
-        <View style={styles.categoryRow}>
-          {outfit.map((item, idx) => (
-            <View key={item.id + '-' + idx} style={styles.categoryTag}>
-              <Text style={styles.categoryTagText}>{item.category}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </>
-  );
+  // Remove duplicate CardContent definition above
 
   const renderCards = () => {
     return outfitStack
@@ -644,39 +611,39 @@ export default function HomePage() {
   };
 
 const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => {
-    const top = outfit.find((item) => item.category === "Tops");
-    const pants = outfit.find((item) => item.category === "Pants");
-    const shoes = outfit.find((item) => item.category === "Shoes");
-    const dress = outfit.find((item) => item.category === "Dresses");
+  const top = outfit.find((item) => item.category === "Tops");
+  const pants = outfit.find((item) => item.category === "Pants");
+  const shoes = outfit.find((item) => item.category === "Shoes");
+  const dress = outfit.find((item) => item.category === "Dresses");
 
-    return (
-      <>
-        <View style={styles.cardImageContainer}>
-          {dress ? (
-            <Image source={dress.source} style={styles.imageDress} />
-          ) : (
-            <>
-              {pants && <Image source={pants.source} style={styles.imagePants} />}
-              {top && <Image source={top.source} style={styles.imageShirt} />}
-              {shoes && <Image source={shoes.source} style={styles.imageShoes} />}
-            </>
-          )}
-        </View>
+  return (
+    <>
+      <View style={styles.cardImageContainer}>
+        {dress ? (
+          <Image source={dress.source} style={styles.imageDress} />
+        ) : (
+          <>
+            {pants && <Image source={pants.source} style={styles.imagePants} />}
+            {top && <Image source={top.source} style={styles.imageShirt} />}
+            {shoes && <Image source={shoes.source} style={styles.imageShoes} />}
+          </>
+        )}
+      </View>
 
-        {/* --- Hinge-Style Breakdown ---*/}
-        <View style={styles.hingeSection}>
-          <Text style={styles.hingeTitle}>This outfit includes:</Text>
-          <View style={styles.categoryRow}>
-            {outfit.map((item) => (
-              <View key={item.id} style={styles.categoryTag}>
-                <Text style={styles.categoryTagText}>{item.category}</Text>
-              </View>
-            ))}
-          </View>
+      {/* --- Hinge-Style Breakdown ---*/}
+      <View style={styles.hingeSection}>
+        <Text style={styles.hingeTitle}>This outfit includes:</Text>
+        <View style={styles.categoryRow}>
+          {outfit.map((item) => (
+            <View key={item.id} style={styles.categoryTag}>
+              <Text style={styles.categoryTagText}>{item.category}</Text>
+            </View>
+          ))}
         </View>
-      </>
-    );
-  };
+      </View>
+    </>
+  );
+};
 
   const CardBackContent = ({
     outfit,
@@ -708,7 +675,7 @@ const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => {
 
             <Text style={styles.itemDetailSectionTitle}>Good for...</Text>
             <View style={styles.itemDetailTagRow}>
-              {item.goodFor.map((tag) => (
+              {(item.goodFor ?? []).map((tag) => (
                 <View key={tag} style={styles.itemDetailTag}>
                   <Text style={styles.itemDetailTagText}>{tag}</Text>
                 </View>
@@ -717,7 +684,7 @@ const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => {
 
             <Text style={styles.itemDetailSectionTitle}>Perfect for...</Text>
             <View style={styles.itemDetailTagRow}>
-              {item.event.map((tag) => (
+              {(item.event ?? []).map((tag) => (
                 <View key={tag} style={styles.itemDetailTag}>
                   <Text style={styles.itemDetailTagText}>{tag}</Text>
                 </View>
