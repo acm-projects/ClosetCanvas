@@ -1,10 +1,23 @@
 import { Tabs } from "expo-router";
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native"; // ✅ Added Image import
-import { Colors } from "@/constants/theme";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Colors } from "@/constants/theme"; 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
+import {
+  Shirt,
+  CalendarDays,
+  Home,
+  BarChart3,
+  User,
+  LucideIcon, 
+} from "lucide-react-native";
 
+type TabItem = {
+  label: string;
+  icon: LucideIcon;
+  route: string;
+};
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -14,7 +27,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#714054", // make the whole thing purple
+          backgroundColor: "#714054",
           borderTopWidth: 0,
           height: 90,
         },
@@ -23,56 +36,60 @@ export default function TabLayout() {
       }}
       tabBar={(props) => (
         <View style={styles.mergedBar}>
-          {/* --- custom icons + labels in one purple bar --- */}
           <View style={styles.iconRow}>
             {[
-              { label: "Wardrobe", icon: require("../../assets/images/wardrobe.png"), route: "ClosetPage" },
-              { label: "Community", icon: require("../../assets/images/community.png"), route: "CommunityPage" },
-              { label: "Home", icon: require("../../assets/images/home.png"), route: "HomePage" },
-              { label: "Planner", icon: require("../../assets/images/calendar.png"), route: "CalendarPage" }, // ✅ fixed spelling
-              { label: "Analytics", icon: require("../../assets/images/analytics.png"), route: "AnalyticsPage" },
-            ].map((tab, index) => (
-              <TouchableOpacity
-                key={index}
-                onPress={() => props.navigation.navigate(tab.route)}
-                style={styles.tabButton}
-              >
-                <Image
-                  source={tab.icon}
-                  style={{
-                    width: 30,
-                    height: 25,
-                    resizeMode: "contain",
-                    tintColor:
-                      props.state.routeNames[props.state.index] === tab.route
-                        ? "#FFD700" // active = gold
-                        : "#FFFFFF", // inactive = white
-                  }}
-                />
-                <Text
-                  style={[
-                    styles.label,
-                    {
-                      color:
-                        props.state.routeNames[props.state.index] === tab.route
-                          ? "#FFD700"
-                          : "#FFFFFF",
-                    },
-                  ]}
+              { label: "Wardrobe", icon: Shirt, route: "ClosetPage" },
+              {
+                label: "Planner",
+                icon: CalendarDays,
+                route: "CalendarPage",
+              },
+              { label: "Home", icon: Home, route: "HomePage" },
+              {
+                label: "Analytics",
+                icon: BarChart3,
+                route: "AnalyticsPage",
+              },
+              { label: "Profile", icon: User, route: "ProfilePage" },
+            ].map((tab: TabItem, index) => {
+              const isActive =
+                props.state.routeNames[props.state.index] === tab.route;
+              const activeColor = "#FFD700";
+              const inactiveColor = "#FFFFFF";
+              const iconColor = isActive ? activeColor : inactiveColor;
+
+              const IconComponent = tab.icon;
+
+              return (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => props.navigation.navigate(tab.route)}
+                  style={styles.tabButton}
                 >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <IconComponent size={32} color={iconColor} />
+
+                  <Text
+                    style={[
+                      styles.label,
+                      {
+                        color: iconColor, 
+                      },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       )}
     >
       <Tabs.Screen name="HomePage" options={{ title: "Home" }} />
-      <Tabs.Screen name="ClosetPage" options={{ title: "Closet" }} />
-      <Tabs.Screen name="CommunityPage" options={{ title: "Community" }} />
-      <Tabs.Screen name="CalendarPage" options={{ title: "Planner" }} />
       <Tabs.Screen name="AnalyticsPage" options={{ title: "Analytics" }} />
+      <Tabs.Screen name="ClosetPage" options={{ title: "Wardrobe" }} />
+      <Tabs.Screen name="CalendarPage" options={{ title: "Planner" }} />
+      <Tabs.Screen name="ProfilePage" options={{ title: "Profile" }} />
     </Tabs>
   );
 }
@@ -80,8 +97,9 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   mergedBar: {
     backgroundColor: "#714054",
-    paddingTop: 8,
-    paddingBottom: 18,
+    paddingTop: 15, // Adjusted padding
+    paddingBottom: 34, // Padding for safe area
+    height: 90,
   },
   iconRow: {
     flexDirection: "row",
@@ -90,6 +108,7 @@ const styles = StyleSheet.create({
   },
   tabButton: {
     alignItems: "center",
+    width: 60,
   },
   label: {
     fontSize: 12,

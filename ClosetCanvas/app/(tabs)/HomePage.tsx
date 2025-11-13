@@ -22,16 +22,16 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  ScrollView,
   Dimensions,
   Animated,
   Modal,
   Pressable,
   ImageStyle,
+  SafeAreaView, 
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { PanGestureHandler, State } from "react-native-gesture-handler";
+import { PanGestureHandler, State, LongPressGestureHandler, ScrollView } from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
@@ -48,6 +48,16 @@ type ClosetDataItem = {
   type: "local" | "user";
   category: string;
 };
+
+const shuffleArray = (array: any[]) => {
+  let shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
 
 type GetClosetItemsResp = {
   user_id: string | null;
@@ -111,6 +121,7 @@ export default function HomePage() {
   const [outfitStack, setOutfitStack] = useState<ClosetDataItem[][]>([]);
   const [likeModalVisible, setLikeModalVisible] = useState(false);
   const [swipedItem, setSwipedItem] = useState<ClosetDataItem[] | null>(null);
+    const [isFlipped, setIsFlipped] = useState(false);
 
    const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -176,6 +187,10 @@ export default function HomePage() {
 
   // animation
   const pan = useRef(new Animated.ValueXY()).current;
+ const flipAnim = useRef(new Animated.Value(0)).current;
+ const panRef = useRef<PanGestureHandler>(null);
+  const longPressRef = useRef<LongPressGestureHandler>(null);
+  const innerScrollRef = useRef<ScrollView>(null);
   const rotate = pan.x.interpolate({
     inputRange: [-width / 2, 0, width / 2],
     outputRange: ["-10deg", "0deg", "10deg"],
@@ -186,6 +201,17 @@ export default function HomePage() {
     outputRange: [0.5, 1, 0.5],
   });
 
+  const frontRotateY = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "180deg"],
+  });
+  const backRotateY = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["180deg", "360deg"],
+  });
+  const generateNewOutfits = () => {
+    setOutfitStack(shuffleArray(outfitsData));
+  };
   // --------------------------------
   //           DATA LOAD
   // --------------------------------
@@ -388,8 +414,17 @@ export default function HomePage() {
     ],
   };
 
-  const onHandlerStateChange = (event: any) => {
+  const onSwipeStateChange = (event: any) => {
     if (event.nativeEvent.oldState === State.ACTIVE) {
+      if (isFlipped) {
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          friction: 4,
+          useNativeDriver: false,
+        }).start();
+        return; 
+      }
+      
       const { translationX } = event.nativeEvent;
       if (translationX > SWIPE_THRESHOLD) {
         Animated.timing(pan, {
@@ -413,6 +448,39 @@ export default function HomePage() {
     }
   };
 
+  const onLongPressStateChange = (event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      handleFlip();
+    }
+  };
+
+  const handleFlip = () => {
+    const toValue = isFlipped ? 0 : 1;
+    Animated.spring(flipAnim, {
+      toValue,
+      friction: 8,
+      useNativeDriver: true, 
+    }).start();
+    setIsFlipped(!isFlipped);
+  };
+
+  const onLongPressStateChange = (event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      handleFlip();
+    }
+  };
+
+  const handleFlip = () => {
+    const toValue = isFlipped ? 0 : 1;
+    Animated.spring(flipAnim, {
+      toValue,
+      friction: 8,
+      useNativeDriver: true, 
+    }).start();
+    setIsFlipped(!isFlipped);
+  };
+
+    // 3. LOGIC FOR MODAL AND SAVING
   const handleLike = () => {
     setSwipedItem(outfitStack[0]);
     setLikeModalVisible(true);
@@ -429,6 +497,8 @@ export default function HomePage() {
       return next;
     });
     pan.setValue({ x: 0, y: 0 });
+    setIsFlipped(false);
+    flipAnim.setValue(0);
   };
 
   const handleAddToWardrobe = async (isFavorite: boolean) => {
@@ -492,13 +562,15 @@ export default function HomePage() {
         if (index === 0) {
           return (
             <PanGestureHandler
-              key={cardKey}
+              key={outfit[0].id}
+              ref={panRef}
+              waitFor={[longPressRef, innerScrollRef]} // Waits for long press to fail
               onGestureEvent={onGestureEvent}
-              onHandlerStateChange={onHandlerStateChange}
+              onHandlerStateChange={onSwipeStateChange}
+              enabled = {!isFlipped}
             >
-              <Animated.View
+              <Animated.View 
                 style={[
-                  styles.outfitCard,
                   styles.topCard,
                   {
                     transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }],
@@ -506,17 +578,58 @@ export default function HomePage() {
                   },
                 ]}
               >
-                <CardContent outfit={outfit} />
-                <Animated.View style={[styles.likeIndicator, likeOpacityAndScale]}>
-                  <Ionicons name="checkmark-circle-outline" size={80} color="green" />
+                
+<LongPressGestureHandler
+                  ref={longPressRef}
+                  onHandlerStateChange={onLongPressStateChange}
+                  minDurationMs={400} 
+                >
+                  <View style={styles.outfitCard}>
+                    <Animated.View
+                      style={[
+                        styles.cardSide,
+                        styles.cardFront,
+                        { transform: [{ rotateY: frontRotateY }] },
+                      ]}
+                    >
+                      <CardContent outfit={outfit} />
+                    </Animated.View>
+
+                    {/* --- NEW --- Card Back */}
+                    <Animated.View
+                      style={[
+                        styles.cardSide,
+                        styles.cardBack,
+                        { transform: [{ rotateY: backRotateY }] },
+                      ]}
+                    >
+                      <CardBackContent outfit={outfit} onClose={handleFlip} scrollRef={innerScrollRef} />
+                    </Animated.View>
+                  </View>
+                </LongPressGestureHandler>
+
+                {/* Like / Save Indicator */}
+                <Animated.View
+                  style={[styles.likeIndicator, likeOpacityAndScale]}
+                >
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={80}
+                    color="green"
+                  />
                 </Animated.View>
-                <Animated.View style={[styles.nopeIndicator, nopeOpacityAndScale]}>
+
+                {/* Nope / Pass Indicator */}
+                <Animated.View
+                  style={[styles.nopeIndicator, nopeOpacityAndScale]}
+                >
                   <Ionicons name="close-circle-outline" size={80} color="red" />
                 </Animated.View>
               </Animated.View>
             </PanGestureHandler>
           );
         }
+
         if (index === 1) {
           return (
             <Animated.View key={cardKey} style={[styles.outfitCard, styles.nextCard]}>
@@ -524,10 +637,97 @@ export default function HomePage() {
             </Animated.View>
           );
         }
+
         return null;
       })
-      .reverse();
+      .reverse(); 
   };
+
+const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => {
+    const top = outfit.find((item) => item.category === "Tops");
+    const pants = outfit.find((item) => item.category === "Pants");
+    const shoes = outfit.find((item) => item.category === "Shoes");
+    const dress = outfit.find((item) => item.category === "Dresses");
+
+    return (
+      <>
+        <View style={styles.cardImageContainer}>
+          {dress ? (
+            <Image source={dress.source} style={styles.imageDress} />
+          ) : (
+            <>
+              {pants && <Image source={pants.source} style={styles.imagePants} />}
+              {top && <Image source={top.source} style={styles.imageShirt} />}
+              {shoes && <Image source={shoes.source} style={styles.imageShoes} />}
+            </>
+          )}
+        </View>
+
+        {/* --- Hinge-Style Breakdown ---*/}
+        <View style={styles.hingeSection}>
+          <Text style={styles.hingeTitle}>This outfit includes:</Text>
+          <View style={styles.categoryRow}>
+            {outfit.map((item) => (
+              <View key={item.id} style={styles.categoryTag}>
+                <Text style={styles.categoryTagText}>{item.category}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </>
+    );
+  };
+
+  const CardBackContent = ({
+    outfit,
+    onClose,
+    scrollRef, 
+  }: {
+    outfit: ClosetDataItem[];
+    onClose: () => void;
+    scrollRef: React.Ref<ScrollView>;
+  }) => (
+    <SafeAreaView style={{ flex: 1 }}>
+      <TouchableOpacity style={styles.cardBackCloseButton} onPress={onClose}>
+        <Ionicons name="close" size={24} color="#3C2332" />
+        <Text style={styles.cardBackCloseText}>Back to outfit</Text>
+      </TouchableOpacity>
+
+      <ScrollView
+        style={styles.cardBackScrollContainer} 
+        contentContainerStyle={styles.cardBackScroll}
+       
+      >
+        {outfit.map((item) => (
+          <View key={item.id} style={styles.itemDetailContainer}>
+            <View style={styles.itemDetailHeader}>
+              <Image source={item.source} style={styles.itemDetailImage} />
+              <Text style={styles.itemDetailTitle}>{item.category}</Text>
+            </View>
+            <Text style={styles.itemDetailDescription}>{item.description}</Text>
+
+            <Text style={styles.itemDetailSectionTitle}>Good for...</Text>
+            <View style={styles.itemDetailTagRow}>
+              {item.goodFor.map((tag) => (
+                <View key={tag} style={styles.itemDetailTag}>
+                  <Text style={styles.itemDetailTagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.itemDetailSectionTitle}>Perfect for...</Text>
+            <View style={styles.itemDetailTagRow}>
+              {item.event.map((tag) => (
+                <View key={tag} style={styles.itemDetailTag}>
+                  <Text style={styles.itemDetailTagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
+  );
 
   return (
     <View style={{ flex: 1 }}>
@@ -567,7 +767,9 @@ export default function HomePage() {
      {/* Outfit Description */}
         <View style={styles.textSection}>
           <Text style={styles.outfitTitle}>Today's Suggestion</Text>
-          <Text style={styles.outfitSubtitle}>Swipe right to save, left to pass</Text>
+          <Text style={styles.outfitSubtitle}>
+            Swipe to decide, or long-press for details
+          </Text>
         </View>
 
         <View style={styles.cardStackContainer}>
@@ -577,9 +779,20 @@ export default function HomePage() {
             renderCards()
           ) : (
             <View style={styles.noMoreCards}>
-              <Text style={styles.outfitTitle}>No outfits available</Text>
-              <Text style={styles.outfitSubtitle}>Upload items to generate outfits.</Text>
-            </View>
+              <Text style={styles.outfitTitle}>All done for today!</Text>
+              <Text style={styles.outfitSubtitle}>
+                Would you like to see more suggestions?
+              </Text>
+
+                <TouchableOpacity
+              style={styles.generateButton}
+              onPress={generateNewOutfits}
+            >
+              <Text style={styles.generateButtonText}>
+                Generate New Outfits
+              </Text>
+            </TouchableOpacity>
+          </View>
           )}
         </View>
       </ScrollView>
@@ -637,7 +850,6 @@ const styles = StyleSheet.create({
 
   cardStackContainer: { width, height: 550, justifyContent: "center", alignItems: "center", marginBottom: 20 },
   outfitCard: {
-    backgroundColor: "#714054",
     borderRadius: 15,
     width: width * 0.85,
     height: 520,
@@ -647,23 +859,111 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 3,
     position: "absolute",
-    overflow: "hidden",
+    overflow: "hidden",// Hides the "hinge" section until card is ready
   },
-  topCard: {},
-  nextCard: { transform: [{ scale: 0.95 }], top: 20 },
-  noMoreCards: { justifyContent: "center", alignItems: "center", height: "100%" },
+  topCard: {
+    position: "absolute",
+    width: width * 0.85,
+    height: 520,
+  },
+  nextCard: {
+ backgroundColor: "#714054", 
+    transform: [{ scale: 0.95 }],
+    top: 20,
+  },
+  noMoreCards: {
+    justifyContent: "center",
+    alignItems: "center",
+    height: "100%",
+    paddingHorizontal:20, 
+  },
 
-  cardImageContainer: { height: "75%", justifyContent: "center", alignItems: "center" },
-  imageShirt: { width: 210, height: 230, resizeMode: "contain", marginHorizontal: 4, marginBottom: -25, zIndex: 2 },
-  imagePants: { width: 180, height: 234, resizeMode: "contain", marginHorizontal: 4,marginTop: -35, zIndex: 1 },
-  imageShoes: { width: 70, height: 50, resizeMode: "contain", marginHorizontal: 4, zIndex: 1, alignSelf: "flex-end" },
-  imageDress: { width: 110, height: 160, resizeMode: "contain", marginHorizontal: 4, zIndex: 1 },
+  generateButton: {
+    backgroundColor: "#714054", // Matches your card theme
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 20,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  generateButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
 
-  hingeSection: { height: "25%", backgroundColor: "#AB8C96", borderTopWidth: 0, borderColor: "#ddd", padding: 15 },
-  hingeTitle: { fontSize: 20, fontWeight: "600", color: "#3C2332", marginBottom: 10 },
-  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  categoryTag: { backgroundColor: "#714054", borderRadius: 7, paddingVertical: 5, paddingHorizontal: 20 },
-  categoryTagText: { color: "white", fontWeight: "600", fontSize: 15 },
+  cardImageContainer: {
+    height: "75%",
+    justifyContent: "center", 
+    alignItems: "center", 
+    backgroundColor: "#714054", 
+  },
+  imageShirt: {
+    width: "70%", 
+    height: "50%",
+    resizeMode: "contain",
+     position: 'absolute', 
+    top: "-2%", 
+    zIndex: 2, 
+  },
+  imagePants: {
+    width: "80%", 
+    height: "70%", 
+    resizeMode: "contain",
+    marginTop: "20%", 
+     position: 'absolute',
+    top: "15%",
+    zIndex: 1, 
+  },
+  imageShoes: {
+   position: 'absolute',
+    width: '35%',
+    height: '55%',
+    resizeMode: 'contain',
+    bottom: '10%',
+    left: '60%',
+    zIndex: 3, 
+    transform: [{ rotate: '-10deg' }],
+  },
+  imageDress: {
+    width: "90%",
+    height: "90%", 
+    resizeMode: "contain", 
+  },
+
+  // --- HINGE-STYLE STYLES ---
+  hingeSection: {
+    height: "25%",
+    backgroundColor: "#AB8C96",
+    borderTopWidth: 0,
+    borderColor: "#ddd",
+    padding: 15,
+  },
+  hingeTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#3C2332",
+    marginBottom: 10,
+  },
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  categoryTag: {
+    backgroundColor: "#714054",
+    borderRadius: 7,
+    paddingVertical: 5,
+    paddingHorizontal: 20,
+  },
+  categoryTagText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 15,
+  },
 
   modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)" },
   modalView: {
@@ -689,4 +989,87 @@ const styles = StyleSheet.create({
 
   likeIndicator: { position: "absolute", top: "30%", left: 20, zIndex: 10 },
   nopeIndicator: { position: "absolute", top: "30%", right: 20, zIndex: 10 },
+  cardSide: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backfaceVisibility: "hidden", // This makes the flip 3D
+  },
+  cardFront: {
+    // No extra styles needed, it's the default
+  },
+  cardBack: {
+    backgroundColor: "#AB8C96", // Match hinge, or choose new color
+  },
+  cardBackScrollContainer: {
+    flex: 1, // This tells the ScrollView to take up the remaining space
+  },
+  cardBackCloseButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+    gap: 5,
+  },
+  cardBackCloseText: {
+    color: "#3C2332",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  cardBackScroll: {
+    padding: 15,
+    paddingTop: 0,
+  },
+  itemDetailContainer: {
+    marginBottom: 20,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    padding: 12,
+  },
+  itemDetailHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  itemDetailImage: {
+    width: 60,
+    height: 60,
+    resizeMode: "contain",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 8,
+  },
+  itemDetailTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#3C2332",
+  },
+  itemDetailDescription: {
+    fontSize: 14,
+    color: "#3C2332",
+    marginBottom: 12,
+    fontStyle: "italic",
+  },
+  itemDetailSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#3C2332",
+    marginBottom: 8,
+  },
+  itemDetailTagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  itemDetailTag: {
+    backgroundColor: "#714054",
+    borderRadius: 7,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  itemDetailTagText: {
+    color: "white",
+    fontWeight: "500",
+    fontSize: 13,
+  },
 });

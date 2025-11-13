@@ -18,13 +18,25 @@ import * as ImagePicker from "expo-image-picker";
 import MasonryList from "@react-native-seoul/masonry-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCredentials } from "../../util/auth";
-
+import {
+  User,
+  FolderClosed,
+  Heart,
+  Shirt,
+  Footprints,
+  Snowflake,
+  Image as ImageIcon, 
+  Plus,
+  Camera,
+  PersonStanding, 
+  UserRoundPen,
+  VenetianMask,
+  LucideIcon,
+} from "lucide-react-native";
 // ---------------------- Types ----------------------
 type ClosetDataItem = {
   id: number;
-  source: ImageSourcePropType; // require(...) or { uri: string }
-  type: "local" | "user";
-  category: string;
+  uri: string;
 };
 
 type Credentials = { uuid?: string; accessToken?: string };
@@ -67,16 +79,25 @@ const mapClothingTypeToCategory = (t?: number | null): string => {
 
 const CATEGORIES = ["All", "Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
 
-const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  All: "apps-outline",
-  Favorites: "heart",
-  Tops: "shirt-outline",
-  Pants: "walk-outline",
-  Dresses: "woman-outline",
-  Shoes: "footsteps-outline",
-  Jackets: "snow-outline",
-  "User Upload": "images-outline",
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  All: FolderClosed,
+  Favorites: Heart,
+  Tops: Shirt,
+  Pants: PersonStanding,
+  Dresses: VenetianMask,
+  Shoes: Footprints,
+  Jackets: Snowflake,
+  "User Upload": ImageIcon,
 };
+
+
+type Outfit = {
+  id: number;
+  items: ClosetItem[];
+};
+
+
+
 
 const API_ENDPOINT = "https://3a42g82o4d.execute-api.us-east-2.amazonaws.com/dev/s3v2";
 
@@ -97,13 +118,24 @@ const ClosetCard = React.memo(
 
     
     return (
-      <Pressable onLongPress={() => onDelete(item.id)}>
-        <View style={styles.card}>
-          <Image source={item.source} style={[styles.userImage, { height: randomHeight }]} />
-          <TouchableOpacity style={styles.heart} onPress={() => onToggleLike(item.id)}>
-            <Ionicons name={isLiked ? "heart" : "heart-outline"} size={30} color={isLiked ? "#DE8672" : "#333"} />
-          </TouchableOpacity>
-        </View>
+      <Pressable onLongPress={handleLongPress}>
+      <View style={styles.card}>
+        <Image
+          source={item.source}
+          // We now use the stable height from our state
+          style={[styles.userImage, { height: randomHeight }]}
+        />
+        <TouchableOpacity
+          style={styles.heart}
+          onPress={() => onToggleLike(item.id)}
+        >
+          <Ionicons
+            name={isLiked ? "heart" : "heart-outline"}
+            size={30}
+            color={isLiked ? "#DE8672" : "#333"}
+          />
+        </TouchableOpacity>
+      </View>
       </Pressable>
     );
   }
@@ -268,13 +300,150 @@ export default function ClosetPage() {
     }
   };
 
-  // ---------------------- UI ----------------------
-  const handleDelete = useCallback((id: number) => setItemToDelete(id), []);
+const toggleLike = useCallback((outfitId: number) => {
+    setLikedOutfits((prev) =>
+      prev.includes(outfitId)
+       ? prev.filter((id) => id !== outfitId)
+         : [...prev, outfitId]
+         );
+        }, []); // <-- Add empty dependency array
+
+  // Upload image to S3 via API
+  const uploadImage = async (base64Image: string, mimeType: string) => {
+    setModalVisible(false);
+    setIsLoading(true);
+
+    if (!userId || !userToken) {
+      Alert.alert("Error", "You are not logged in. Please restart the app.");
+      setIsLoading(false);
+      return;
+    }
+
+    const body = {
+      user_id: userId,
+      image: base64Image,
+      filetype: mimeType || "image/jpeg",
+    };
+
+    try {
+      const response = await fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: userToken,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          responseData.message ||
+            "Upload failed with status: " + response.status
+        );
+      }
+
+      Alert.alert("Success!", "Your item has been added.");
+
+      // Also add to local state for immediate display
+      const newItem: ClosetDataItem = {
+        id: Date.now(),
+        source: { uri: `data:${mimeType};base64,${base64Image}` },
+        type: "user",
+        category: "User Upload",
+      };
+      setUserImages([...userImages, newItem]);
+    } catch (error) {
+      console.error("Upload error:", error);
+      Alert.alert(
+        "Upload Failed",
+        error instanceof Error ? error.message : "Could not upload image."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  async function pickImage() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      alert("Permission to access media library is required!");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 4],
+      quality: 0.8,
+      base64: true,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      const asset = result.assets[0];
+      if (asset.base64 && asset.mimeType) {
+        await uploadImage(asset.base64, asset.mimeType);
+      }
+    }
+  }
+
+  async function takePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      alert("Permission to access camera is required!");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 4],
+      quality: 0.8,
+      base64: true,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      const asset = result.assets[0];
+      if (asset.base64 && asset.mimeType) {
+        await uploadImage(asset.base64, asset.mimeType);
+      }
+    }
+  }
+
+  function imageSelecter() {
+    setModalVisible(true);
+  }
+
+  function onTakePhoto() {
+    takePhoto();
+    setModalVisible(false);
+  }
+
+  function onPickImage() {
+    pickImage();
+    setModalVisible(false);
+  }
+
+  // --- DELETE your old handleDelete and ADD these three functions ---
+
+  // This function just opens the modal
+  const handleDelete = useCallback((id: number) => {
+    setItemToDelete(id);
+    setDeleteModalVisible(true);
+  }, []);
+
+  // This function runs when the user presses "Delete"
   const confirmDelete = () => {
     if (itemToDelete === null) return;
-    setUserImages((prev) => prev.filter((x) => x.id !== itemToDelete));
-    setLocalItems((prev) => prev.filter((x) => x.id !== itemToDelete));
-    setLikedOutfits((prev) => prev.filter((id) => id !== itemToDelete));
+
+    // --- THIS IS THE FIX ---
+    // Remove from user images
+    setUserImages((prev) => prev.filter((item) => item.id !== itemToDelete));
+    // Remove from local items
+    setLocalItems((prev) => prev.filter((item) => item.id !== itemToDelete));
+    // -----------------------
+
+    // Also remove from liked outfits
+    setLikedOutfits((prev) => prev.filter((likedId) => likedId !== itemToDelete));
+
+    // Close and reset the modal
+    setDeleteModalVisible(false);
     setItemToDelete(null);
     setDeleteModalVisible(false);
   };
@@ -315,21 +484,27 @@ const renderMasonryItem = useCallback(
 );
 
 
+const ActiveCategoryIcon = CATEGORY_ICONS[activeCategory] || FolderClosed;
+
   return (
     <View style={styles.container}>
-      <Link href="/SettingsPage" style={styles.userIcon}>
-        <Entypo name="user" size={28} color="white" />
-      </Link>
-
-      <View style={styles.subtitleRow}>
-        <Ionicons
-          name={CATEGORY_ICONS[activeCategory] || "grid-outline"}
-          size={40}
-          color="#714054"
-          style={{ marginRight: 10, marginTop: 40, marginLeft: 20 }}
-        />
-        <Text style={styles.subtitle}>{activeCategory === "All" ? "Wardrobe" : activeCategory}</Text>
-      </View>
+       <Link href="/SettingsPage" style = {styles.userIcon}>
+            <Entypo name="user" size={28} color="white"  />
+          </Link>
+<View style={styles.subtitleRow}>
+  
+  <Ionicons
+    name={CATEGORY_ICONS[activeCategory] || "grid-outline"}
+    size={40}
+    marginTop = {45}
+    color="#714054"
+    style={{ marginRight: 10, marginTop:40, marginLeft:20 }}
+  />
+  <Text style={styles.subtitle}>
+    {activeCategory === "All" ? "Wardrobe" : activeCategory}
+  </Text>
+  
+</View>
 
       {/* Category strip (fixed height so pills don't stretch) */}
       <View style={styles.categoryBar}>
@@ -371,7 +546,10 @@ const renderMasonryItem = useCallback(
     />
 
 
-      <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
+      
+
+      {/* Add Button */}
+      <TouchableOpacity style={styles.addButton} onPress={imageSelecter}>
         <Ionicons name="add" size={30} color="#714054" />
       </TouchableOpacity>
 
@@ -379,11 +557,13 @@ const renderMasonryItem = useCallback(
         <Pressable style={styles.modalContainer} onPress={() => setModalVisible(false)}>
           <Pressable style={styles.modalView}>
             <Text style={styles.modalTitle}>Add to Closet</Text>
-            <TouchableOpacity style={styles.modalButton} onPress={takePhoto}>
+
+            <TouchableOpacity style={styles.modalButton} onPress={onTakePhoto}>
               <Ionicons name="camera" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Take Photo</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalButton} onPress={pickImage}>
+
+            <TouchableOpacity style={styles.modalButton} onPress={onPickImage}>
               <Ionicons name="image" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Choose from Library</Text>
             </TouchableOpacity>
@@ -458,12 +638,61 @@ const styles = StyleSheet.create({
     color: "#2E2E2E",
     fontWeight: "600",
     fontSize: 16,
+    color: "#555",
+    textAlign: "center",
+    marginBottom: 24,
   },
-
-
-  // Loading
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.4)" },
-  loadingText: { color: "white", marginTop: 10, fontSize: 16, fontWeight: "600" },
-
-  userIcon: { position: "absolute", top: 40, right: 20, backgroundColor: "#714054", borderRadius: 50, padding: 6, zIndex: 10 },
+  deleteModalButtonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  deleteButton: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButtonCancel: {
+    backgroundColor: "#E5D7D7",
+  },
+  deleteButtonConfirm: {
+    backgroundColor: "#D90429", // Destructive red
+  },
+  deleteButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  deleteButtonTextCancel: {
+    color: "#3C2332",
+  },
+  userIcon: {
+  position: "absolute",
+  top: 40, // adjust as needed
+  right: 20, // distance from right edge
+  zIndex: 10,
+  backgroundColor: "#714054", // optional for contrast
+  borderRadius: 22,
+  width:44,
+  height:44,
+  justifyContent: "center",
+  alignItems: "center",
+  alignContent:"center",
+  // make sure it stays on top of everything
+},
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+  },
+  loadingText: {
+    color: "white",
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: "600",
+  },
 });

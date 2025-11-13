@@ -8,18 +8,20 @@ import {
   Alert,
   Image,
   TouchableOpacity,
+  SafeAreaView, 
 } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { Link, useRouter,Stack } from "expo-router";
 import ArrowSVG from "../assets/images/arrowsvg.svg";
 
 export default function Welcomepage() {
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+    <Stack.Screen options={{headerShown: false}}/>
       <Image
-        source={require("../assets/images/TransBG.png")}
-        style={{ width: 350, height: 350 }}
+        source={require("../assets/images/ClosetCanvas_logo.png")}
+        style={{ width: 350, height: 350, marginTop: 180 }}
       />
 
       <Text style={styles.title}> Welcome</Text>
@@ -36,7 +38,7 @@ export default function Welcomepage() {
           </TouchableOpacity>
         </Link>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -45,7 +47,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-start",
     alignItems: "center",
-    marginTop: 65,
     backgroundColor: "#E5D7D7",
     padding: 20,
   },
