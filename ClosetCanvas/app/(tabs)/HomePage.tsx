@@ -189,21 +189,28 @@ export default function HomePage() {
   // --------------------------------
   //           DATA LOAD
   // --------------------------------
-  useEffect(() => {
-     (async () => {
+useEffect(() => {
+  (async () => {
     const creds = await getCredentials();
-    //console.log("[Home] Full credentials:", JSON.stringify(creds, null, 2));
     
-    const actualUserId = creds?.accessToken; 
-    
-    if (!actualUserId) {
-      console.warn("[Home] No user id found in credentials.");
+    if (!creds?.accessToken) {
+      console.warn("[Home] No access token found.");
       Alert.alert("Not logged in", "Please log in again.");
       return;
     }
     
-    //console.log("[Home] Setting userId to:", actualUserId);
-    setUserId(actualUserId); // ✅ Use the UUID consistently
+    // Decode the JWT to get the actual user ID from the 'sub' claim
+    try {
+      const tokenParts = creds.accessToken.split('.');
+      const payload = JSON.parse(atob(tokenParts[1]));
+      const actualUserId = payload.sub; // This is the real user UUID
+      
+      console.log("[Home] Decoded user ID from token:", actualUserId);
+      setUserId(actualUserId);
+    } catch (e) {
+      console.error("[Home] Failed to decode token:", e);
+      Alert.alert("Error", "Failed to extract user information");
+    }
   })();
 }, []);
 
@@ -319,7 +326,7 @@ export default function HomePage() {
       //console.log("[CreateOutfits] POST", CREATE_OUTFITS_URL);
       const body = {
         userId,               // ⚠️ Uses the user's UserID from state (your working auth)
-        style: "minimal",
+        style: "y2k",
         numberOfOutfits: 3,
         outfitTypes: [1, 2],
       };
