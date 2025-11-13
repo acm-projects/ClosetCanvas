@@ -13,7 +13,7 @@ import {
   ImageSourcePropType,
 } from "react-native";
 import { Ionicons, Entypo } from "@expo/vector-icons";
-import { Link } from "expo-router";
+import { Link, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import MasonryList from "@react-native-seoul/masonry-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -131,11 +131,12 @@ export default function ClosetPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [localItems, setLocalItems] = useState<ClosetDataItem[]>([]);
 
-  // ---------------------- Init ----------------------
-  useEffect(() => {
+useFocusEffect(
+  useCallback(() => {
     loadData();
     loadUserCredentials();
-  }, []);
+  }, [])
+);
 
   useEffect(() => {
     saveData();
