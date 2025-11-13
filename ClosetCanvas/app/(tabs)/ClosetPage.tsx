@@ -23,7 +23,7 @@ import Constants from "expo-constants";
 // ---------------------- Types ----------------------
 type ClosetDataItem = {
   id: number;
-  source: ImageSourcePropType;
+  source: ImageSourcePropType; // require(...) or { uri: string }
   type: "local" | "user";
   category: string;
 };
@@ -96,22 +96,13 @@ const ClosetCard = React.memo(
   }) => {
     const [randomHeight] = useState(Math.floor(Math.random() * 100) + 180);
 
+    
     return (
       <Pressable onLongPress={() => onDelete(item.id)}>
         <View style={styles.card}>
-          <Image
-            source={item.source}
-            style={[styles.userImage, { height: randomHeight }]}
-          />
-          <TouchableOpacity
-            style={styles.heart}
-            onPress={() => onToggleLike(item.id)}
-          >
-            <Ionicons
-              name={isLiked ? "heart" : "heart-outline"}
-              size={30}
-              color={isLiked ? "#DE8672" : "#333"}
-            />
+          <Image source={item.source} style={[styles.userImage, { height: randomHeight }]} />
+          <TouchableOpacity style={styles.heart} onPress={() => onToggleLike(item.id)}>
+            <Ionicons name={isLiked ? "heart" : "heart-outline"} size={30} color={isLiked ? "#DE8672" : "#333"} />
           </TouchableOpacity>
         </View>
       </Pressable>
@@ -129,7 +120,10 @@ export default function ClosetPage() {
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [localItems, setLocalItems] = useState<ClosetDataItem[]>([]);
+
+  const initialLocalData: ClosetDataItem[] = [];
+
+  const [localItems, setLocalItems] = useState<ClosetDataItem[]>(initialLocalData);
 
   // ---------------------- Init ----------------------
   useEffect(() => {
@@ -143,204 +137,153 @@ export default function ClosetPage() {
 
   const loadUserCredentials = async () => {
     const creds = (await getCredentials()) as Credentials;
-    console.log("[Creds] getCredentials() →", creds);
-    if (creds?.uuid) {
-      setUserId(creds.uuid);
-    } else {
-      console.warn("[Creds] No credentials found. User not logged in.");
-    }
+    //console.log("[Creds] getCredentials() →", creds);
+    // ✅ use uuid as your API's user_id
+    if (creds?.uuid) setUserId(creds.accessToken);
+    else console.warn("[Creds] No credentials found. User not logged in.");
   };
 
   // ---------------------- GET ----------------------
   const refreshFromServer = useCallback(async () => {
-    if (!userId) {
-      console.log("[GET] No userId, skipping refresh");
-      return;
-    }
+    if (!userId) return;
     const url = `${API_ENDPOINT}?user_id=${encodeURIComponent(userId)}&signed=1&expiresIn=3600`;
-    console.log("[GET] Fetching from:", url);
+    // console.log("[GET] Request URL:", url);
 
     try {
       const res = await fetch(url);
       const raw = await res.text();
-      console.log("[GET] Status:", res.status);
-      console.log("[GET] Raw response:", raw.substring(0, 200));
-
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}: ${raw}`);
-      }
+      //console.log("[GET] Status:", res.status);
+      //console.log("[GET] Raw body:", raw);
 
       const json: GetItemsResponse = JSON.parse(raw || "{}");
       const items = json.items || [];
 
-      console.log("[GET] Parsed items count:", items.length);
+      console.log("[GET] Parsed items:", items.length);
 
-      const serverItems: ClosetDataItem[] = items
-        .filter((it) => it.uri && typeof it.uri === "string" && it.uri.trim() !== "")
-        .map((it) => ({
-          id: uuidToInt(String(it.id || it.item_id || "")),
-          source: { uri: it.uri! },
-          type: "user" as const,
-          category: mapClothingTypeToCategory(it.clothingType),
-        }));
+      const serverItems: ClosetDataItem[] = (json.items || [])
+      .filter((it) => it.uri && typeof it.uri === "string" && it.uri.trim() !== "")
+      .map((it) => ({
+        id: uuidToInt(String(it.id || it.item_id || "")),
+        source: { uri: it.uri! },
+        type: "user",
+        category: mapClothingTypeToCategory(it.clothingType),
+      }));
 
-      console.log("[GET] Valid items:", serverItems.length);
+
+      //console.log("[GET] Mapped ClosetDataItems:", serverItems);
       setUserImages(serverItems);
       await AsyncStorage.setItem("userImages", JSON.stringify(serverItems));
     } catch (e) {
       console.error("[GET] Error:", e);
-      Alert.alert("Load Failed", "Could not load items from server");
     }
   }, [userId]);
 
   useEffect(() => {
-    if (userId) {
-      console.log("[Effect] userId changed, refreshing:", userId);
-      refreshFromServer();
-    }
+    if (userId) refreshFromServer();
   }, [userId, refreshFromServer]);
 
   // ---------------------- POST ----------------------
-  // Accepts asset: ImagePickerAsset
-  const uploadImage = async (asset: { uri: string; type?: string; mimeType?: string }) => {
+  const uploadImage = async (base64Image: string, mimeType: string, imageUri: string | undefined) => {
+    // --- MOVED: Loading state is now handled here ---
+    setModalVisible(false);
+    setIsLoading(true);
+
+
     if (!userId) {
       Alert.alert("Error", "You are not logged in.");
       return;
     }
-    const bgApi = Constants.expoConfig?.extra?.BG_REMOVAL_API_KEY || "";
+
+    const BG_REMOVAL_API = Constants.expoConfig?.extra?.BG_REMOVAL_API_KEY || "";
+    // console.log("[POST] Sending upload:", { ...body, image: `<base64 len=${base64Image.length}>` });
+
     setIsLoading(true);
-    try {
-      // Use asset.uri for FormData (React Native style)
-      const formData = new FormData();
-      formData.append('image_file', {
-        uri: asset.uri,
-        name: 'upload.jpg',
-        type: asset.mimeType || asset.type || 'image/jpeg',
-      } as any);
-      formData.append('size', 'auto');
+     try {
+// 1 Send image to background removal API (demo.api4ai.cloud)
+     const formData = new FormData();
+    formData.append("image_file", {
+      uri: `data:${mimeType};base64,${base64Image}`,
+      name: "upload.jpg",
+      type: mimeType,
+    });
 
-      const bgResponse = await fetch("https://api.remove.bg/v1.0/removebg", {
-        method: "POST",
-        headers: {
-          "X-Api-Key": bgApi,
-        },
-        body: formData,
-      });
+    const bgResponse = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: { "X-Api-Key": BG_REMOVAL_API },
+    body: formData,
+  });
 
-      if (!bgResponse.ok) {
-        const errorText = await bgResponse.text();
-        throw new Error(`Background removal failed: ${bgResponse.status} - ${errorText}`);
-      }
+    const arrayBuffer = await bgResponse.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+}
+const bgRemovedBase64 = btoa(binary);
 
-      // Convert response to base64
-      const arrayBuffer = await bgResponse.arrayBuffer();
-      let binary = "";
-      const bytes = new Uint8Array(arrayBuffer);
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const bgRemovedBase64 = btoa(binary);
-
-      if (!bgRemovedBase64) {
-        throw new Error("No background-removed image returned");
-      }
-
-      // Step 2: Upload to S3
-      const uploadBody = {
-        user_id: userId,
-        image: bgRemovedBase64,
-        filetype: "image/png",
-      };
-
-      const uploadResponse = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(uploadBody),
-      });
-
-      const uploadData = await uploadResponse.json();
-      if (!uploadResponse.ok) {
-        throw new Error(
-          uploadData.message || `Upload failed: ${uploadResponse.status}`
-        );
-      }
-
-      Alert.alert("Success", "Item uploaded successfully!");
-      await refreshFromServer();
-    } catch (e) {
-      Alert.alert(
-        "Upload Failed",
-        e instanceof Error ? e.message : "An error occurred during upload"
-      );
-    } finally {
-      setIsLoading(false);
+    if (!bgRemovedBase64) {
+      throw new Error("No background-removed image returned");
     }
-  };
+
+
+    // 2 Upload the background-removed image to your S3 API
+    const body = {
+      user_id: userId,
+      image: bgRemovedBase64,
+      filetype: "png",
+    };
+
+    const response = await fetch(API_ENDPOINT, {
+      method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        responseData.message ||
+          "Upload failed with status: " + response.status
+      );
+    }
+
+    Alert.alert("Successful Upload");
+  } catch (error) {
+    console.error("Upload error:", error);
+    Alert.alert(
+      "Upload Failed",
+      error instanceof Error ? error.message : "Could not upload image."
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // ---------------------- Pickers ----------------------
   const pickImage = async () => {
-    console.log('[Picker] pickImage called');
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      console.log('[Picker] Media library permission:', permission.status);
-      
-      if (!permission.granted) {
-        Alert.alert("Permission Required", "Please allow access to your photo library.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
-        allowsEditing: false,
-        quality: 0.7,
-        base64: true,
-      });
-      
-      console.log('[Picker] Result canceled:', result.canceled);
-      
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-        console.log('[Picker] Asset:', { 
-          hasBase64: !!asset.base64, 
-          mimeType: asset.mimeType,
-          uri: asset.uri 
-        });
-        
-      await uploadImage(asset);
-      }
-    } catch (e) {
-      console.error('[Picker] Error:', e);
-      Alert.alert('Error', 'Failed to pick image: ' + (e instanceof Error ? e.message : String(e)));
-    }
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return alert("Permission to access media library required.");
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.7,
+      base64: true,
+    });
+    if (!result.canceled && result.assets?.[0]?.base64 && result.assets?.[0]?.mimeType)
+      await uploadImage(result.assets[0].base64, result.assets[0].mimeType);
   };
 
   const takePhoto = async () => {
-    console.log('[Camera] takePhoto called');
-    try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      console.log('[Camera] Permission:', permission.status);
-      
-      if (!permission.granted) {
-        Alert.alert("Permission Required", "Please allow access to your camera.");
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 0.7,
-        base64: true,
-      });
-      
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-      await uploadImage(asset);
-      }
-    } catch (e) {
-      console.error('[Camera] Error:', e);
-      Alert.alert('Error', 'Failed to take photo: ' + (e instanceof Error ? e.message : String(e)));
-    }
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return alert("Permission to access camera required.");
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.7,
+      base64: true,
+    });
+    if (!result.canceled && result.assets?.[0]?.base64 && result.assets?.[0]?.mimeType)
+      await uploadImage(result.assets[0].base64, result.assets[0].mimeType);
   };
 
   // ---------------------- Local storage ----------------------
@@ -349,16 +292,11 @@ export default function ClosetPage() {
       const storedUserItems = await AsyncStorage.getItem("userImages");
       const storedLikes = await AsyncStorage.getItem("likedOutfits");
       const storedLocalItems = await AsyncStorage.getItem("localItems");
-      
-      if (storedUserItems) {
-        const parsed = JSON.parse(storedUserItems);
-        console.log("[Storage] Loaded user items:", parsed.length);
-        setUserImages(parsed);
-      }
+      if (storedUserItems) setUserImages(JSON.parse(storedUserItems));
       if (storedLikes) setLikedOutfits(JSON.parse(storedLikes));
       if (storedLocalItems) setLocalItems(JSON.parse(storedLocalItems));
     } catch (e) {
-      console.error("[Storage] Failed to load data", e);
+      console.error("Failed to load data", e);
     }
   };
 
@@ -368,55 +306,27 @@ export default function ClosetPage() {
       await AsyncStorage.setItem("likedOutfits", JSON.stringify(likedOutfits));
       await AsyncStorage.setItem("localItems", JSON.stringify(localItems));
     } catch (e) {
-      console.error("[Storage] Failed to save data", e);
+      console.error("Failed to save data", e);
     }
   };
 
-  const toggleLike = useCallback((outfitId: number) => {
-    setLikedOutfits((prev) =>
-      prev.includes(outfitId)
-        ? prev.filter((id) => id !== outfitId)
-        : [...prev, outfitId]
-    );
-  }, []);
-
-
-  function imageSelecter() {
-    setModalVisible(true);
-  }
-
-  function onTakePhoto() {
-    console.log('onTakePhoto modal action');
-    setModalVisible(false);
-    takePhoto();
-  }
-
-  function onPickImage() {
-    console.log('onPickImage modal action');
-    setModalVisible(false);
-    pickImage();
-  }
-
-  const handleDelete = useCallback((id: number) => {
-    setItemToDelete(id);
-    setDeleteModalVisible(true);
-  }, []);
-
+  // ---------------------- UI ----------------------
+  const handleDelete = useCallback((id: number) => setItemToDelete(id), []);
   const confirmDelete = () => {
     if (itemToDelete === null) return;
-
-    setUserImages((prev) => prev.filter((item) => item.id !== itemToDelete));
-    setLocalItems((prev) => prev.filter((item) => item.id !== itemToDelete));
-    setLikedOutfits((prev) => prev.filter((likedId) => likedId !== itemToDelete));
-
-    setDeleteModalVisible(false);
+    setUserImages((prev) => prev.filter((x) => x.id !== itemToDelete));
+    setLocalItems((prev) => prev.filter((x) => x.id !== itemToDelete));
+    setLikedOutfits((prev) => prev.filter((id) => id !== itemToDelete));
     setItemToDelete(null);
-  };
-
-  const cancelDelete = () => {
     setDeleteModalVisible(false);
-    setItemToDelete(null);
   };
+  const cancelDelete = () => setDeleteModalVisible(false);
+
+  const toggleLike = useCallback(
+    (id: number) =>
+      setLikedOutfits((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])),
+    []
+  );
 
   const allData = useMemo(() => [...localItems, ...userImages], [localItems, userImages]);
 
@@ -426,22 +336,26 @@ export default function ClosetPage() {
     return allData.filter((x) => x.category === activeCategory);
   }, [allData, activeCategory, likedOutfits]);
 
-  const renderMasonryItem = useCallback(
-    ({ item, i }: { item: unknown; i: number }) => {
-      const it = item as ClosetDataItem;
-      const isLiked = likedOutfits.includes(it.id);
-      
-      return (
-        <ClosetCard
-          item={it}
-          isLiked={isLiked}
-          onToggleLike={toggleLike}
-          onDelete={handleDelete}
-        />
-      );
-    },
-    [likedOutfits, toggleLike, handleDelete]
-  );
+  
+
+// 1) Replace your current renderMasonryItem with this:
+const renderMasonryItem = useCallback(
+  ({ item, i }: { item: unknown; i: number }) => {
+    const it = item as ClosetDataItem;
+    const isLiked = likedOutfits.includes(it.id);
+    
+    return (
+      <ClosetCard
+        item={it}
+        isLiked={isLiked}
+        onToggleLike={toggleLike}
+        onDelete={handleDelete}
+      />
+    );
+  },
+  [likedOutfits, toggleLike, handleDelete]
+);
+
 
   return (
     <View style={styles.container}>
@@ -451,24 +365,15 @@ export default function ClosetPage() {
 
       <View style={styles.subtitleRow}>
         <Ionicons
-          name={
-            activeCategory === "Favorites" ? "heart" :
-            activeCategory === "Tops" ? "shirt" :
-            activeCategory === "Pants" ? "man" :
-            activeCategory === "Dresses" ? "woman" :
-            activeCategory === "Shoes" ? "walk" :
-            activeCategory === "Jackets" ? "snow" :
-            "grid-outline"
-          }
+          name={CATEGORY_ICONS[activeCategory] || "grid-outline"}
           size={40}
           color="#714054"
           style={{ marginRight: 10, marginTop: 40, marginLeft: 20 }}
         />
-        <Text style={styles.subtitle}>
-          {activeCategory === "All" ? "Wardrobe" : activeCategory}
-        </Text>
+        <Text style={styles.subtitle}>{activeCategory === "All" ? "Wardrobe" : activeCategory}</Text>
       </View>
 
+      {/* Category strip (fixed height so pills don't stretch) */}
       <View style={styles.categoryBar}>
         <ScrollView
           horizontal
@@ -498,80 +403,47 @@ export default function ClosetPage() {
         </ScrollView>
       </View>
 
-      <MasonryList
-        data={filteredData}
-        keyExtractor={(item: unknown) => (item as ClosetDataItem).id.toString()}
-        numColumns={2}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 100 }}
-        renderItem={renderMasonryItem}
-      />
+    <MasonryList
+      data={filteredData}
+      keyExtractor={(item: unknown) => (item as ClosetDataItem).id.toString()}
+      numColumns={2}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 100 }}
+      renderItem={renderMasonryItem}
+    />
 
-      <TouchableOpacity style={styles.addButton} onPress={imageSelecter}>
+
+      <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
         <Ionicons name="add" size={30} color="#714054" />
       </TouchableOpacity>
 
-      {/* Add Image Modal */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <Pressable style={styles.modalContainer} onPress={() => setModalVisible(false)}>
           <Pressable style={styles.modalView}>
             <Text style={styles.modalTitle}>Add to Closet</Text>
-
             <TouchableOpacity style={styles.modalButton} onPress={takePhoto}>
               <Ionicons name="camera" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Take Photo</Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.modalButton} onPress={pickImage}>
               <Ionicons name="image" size={22} color="#714054" />
               <Text style={styles.modalButtonText}>Choose from Library</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.modalButton, styles.cancelButton]}
               onPress={() => setModalVisible(false)}
             >
               <Text style={[styles.modalButtonText, styles.cancelButtonText]}>Cancel</Text>
             </TouchableOpacity>
+
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal visible={deleteModalVisible} transparent animationType="fade">
-        <Pressable style={styles.modalContainer} onPress={cancelDelete}>
-          <Pressable style={styles.modalView}>
-            <Text style={styles.modalTitle}>Delete Item</Text>
-            <Text style={styles.deleteModalText}>
-              Are you sure you want to delete this item?
-            </Text>
-
-            <View style={styles.deleteModalButtonRow}>
-              <TouchableOpacity
-                style={[styles.deleteButton, styles.deleteButtonCancel]}
-                onPress={cancelDelete}
-              >
-                <Text style={[styles.deleteButtonText, styles.deleteButtonTextCancel]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.deleteButton, styles.deleteButtonConfirm]}
-                onPress={confirmDelete}
-              >
-                <Text style={styles.deleteButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Loading Modal */}
       <Modal transparent visible={isLoading}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#714054" />
-          <Text style={styles.loadingText}>Processing image...</Text>
+          <Text style={styles.loadingText}>Uploading...</Text>
         </View>
       </Modal>
     </View>
@@ -581,50 +453,42 @@ export default function ClosetPage() {
 // ---------------------- Styles ----------------------
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#E5D7D7" },
+
   subtitle: { fontSize: 25, marginTop: 42, color: "#2E2E2E", fontWeight: "bold", margin: 5 },
   subtitleRow: { flexDirection: "row", alignItems: "center", marginLeft: 5, marginBottom: 5 },
-  categoryBar: { height: 56, marginBottom: 10 },
-  categoryContainer: { paddingHorizontal: 15, alignItems: "center" },
+
+  // Category strip
+  categoryBar: {
+    height: 56, // keeps pills short
+    marginBottom: 10,
+  },
+  categoryContainer: {
+    paddingHorizontal: 15,
+    alignItems: "center", // center chips vertically in the 56px bar
+  },
   categoryButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
     backgroundColor: "#714054",
     borderRadius: 20,
-    marginRight: 10,
+    marginRight: 10, // spacing between chips
     alignSelf: "center",
   },
   categoryButtonActive: { backgroundColor: "#DE8672" },
   categoryText: { color: "#FAFAFA", fontWeight: "600" },
   categoryTextActive: { color: "#FFF", fontWeight: "600" },
+
+  // Cards
   card: { backgroundColor: "#714054", borderRadius: 16, margin: 5, overflow: "hidden", elevation: 3 },
   userImage: { width: "100%", resizeMode: "contain", borderRadius: 12 },
   heart: { position: "absolute", top: 8, right: 8 },
-  addButton: { 
-    position: "absolute", 
-    bottom: 20, 
-    right: 20, 
-    backgroundColor: "#fff", 
-    borderRadius: 50, 
-    padding: 10,
-    elevation: 5,
-  },
+
+  // Modals & buttons
+  addButton: { position: "absolute", bottom: 20, right: 20, backgroundColor: "#fff", borderRadius: 50, padding: 10 },
   modalContainer: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
-  modalView: { 
-    backgroundColor: "white", 
-    borderTopLeftRadius: 20, 
-    borderTopRightRadius: 20, 
-    paddingVertical: 20, 
-    paddingHorizontal: 20,
-    alignItems: "center" 
-  },
+  modalView: { backgroundColor: "white", borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingVertical: 20, alignItems: "center" },
   modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 20 },
-  modalButton: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    padding: 12, 
-    justifyContent: "center", 
-    width: "100%" 
-  },
+  modalButton: { flexDirection: "row", alignItems: "center", padding: 12, justifyContent: "center", width: "100%" },
   modalButtonText: { color: "#2E2E2E", fontSize: 16, fontWeight: "600", marginLeft: 10 },
   cancelButton: {
     backgroundColor: "#E5D7D7",
@@ -632,52 +496,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     width: "60%",
   },
-  cancelButtonText: { color: "#2E2E2E", fontWeight: "600", fontSize: 16 },
-  deleteModalText: {
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 24,
-    textAlign: "center",
-  },
-  deleteModalButtonRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-    gap: 12,
-  },
-  deleteButton: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteButtonCancel: { backgroundColor: "#E5D7D7" },
-  deleteButtonConfirm: { backgroundColor: "#D90429" },
-  deleteButtonText: { color: "white", fontSize: 16, fontWeight: "bold" },
-  deleteButtonTextCancel: { color: "#3C2332" },
-  userIcon: {
-    position: "absolute",
-    top: 40,
-    right: 20,
-    zIndex: 10,
-    backgroundColor: "#714054",
-    borderRadius: 22,
-    width: 44,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-  },
-  loadingText: {
-    color: "white",
-    marginTop: 10,
-    fontSize: 16,
+  cancelButtonText: {
+    color: "#2E2E2E",
     fontWeight: "600",
+    fontSize: 16,
   },
+
+
+  // Loading
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.4)" },
+  loadingText: { color: "white", marginTop: 10, fontSize: 16, fontWeight: "600" },
+
+  userIcon: { position: "absolute", top: 40, right: 20, backgroundColor: "#714054", borderRadius: 50, padding: 6, zIndex: 10 },
 });
