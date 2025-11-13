@@ -1,8 +1,7 @@
 import React, { useState,useEffect,useMemo,useCallback } from "react";
 import { View,Text,Modal,StyleSheet,Image, TouchableOpacity,Pressable,Dimensions, ScrollView,Alert,ActivityIndicator} from "react-native";
 import { Ionicons, Entypo } from "@expo/vector-icons";
-import { Link } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
+import { Link, useFocusEffect } from "expo-router";import * as ImagePicker from "expo-image-picker";
 import MasonryList from "@react-native-seoul/masonry-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCredentials } from "../../util/auth";
@@ -127,10 +126,12 @@ const initialLocalData: ClosetDataItem[] = [
   
   const [localItems, setLocalItems] = useState<ClosetDataItem[]>(initialLocalData);
 
-  useEffect(() => {
+useFocusEffect(
+  useCallback(() => {
     loadData();
     loadUserCredentials();
-  }, []);
+  }, [])
+);
 
   useEffect (() => {
     saveData();

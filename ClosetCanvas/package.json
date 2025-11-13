@@ -19,6 +19,7 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@react-navigation/native-stack": "^7.3.16",
+    "@shopify/react-native-skia": "2.2.12",
     "expo": "54.0.23",
     "expo-camera": "~17.0.9",
     "expo-checkbox": "~5.0.7",
@@ -46,6 +47,7 @@
     "react-native-calendars": "^1.1313.0",
     "react-native-chart-kit": "^6.12.0",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-gifted-charts": "^1.4.65",
     "react-native-masonry-list": "^2.16.2",
     "react-native-modal-datetime-picker": "^18.0.0",
     "react-native-paper": "^5.14.5",
@@ -58,7 +60,9 @@
     "react-native-toast-message": "^2.3.3",
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "victory": "^37.3.6",
+    "victory-native": "^41.20.2"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
