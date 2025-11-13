@@ -9,9 +9,23 @@ import {
   Image,
   TouchableOpacity,
   SafeAreaView, 
+  Dimensions, 
 } from "react-native";
 import { Link, useRouter,Stack } from "expo-router";
 import ArrowSVG from "../assets/images/arrowsvg.svg";
+
+const text = "...tesolC ruoY gnivoL oT         ";
+const letters = text.split("");
+
+const logoGraphicSize =340; 
+const logoContainerSize = Dimensions.get("window").width; 
+const letterFontSize = 24; 
+const letterHeight = letterFontSize;
+const letterWidth = letterFontSize * 0.6;
+
+const textRadius = (logoGraphicSize / 2) +10; 
+const totalArcAngle = Math.PI * 1.2;
+const startAngleOffset = Math.PI *.6;
 
 export default function Welcomepage() {
   const router = useRouter();
@@ -19,13 +33,42 @@ export default function Welcomepage() {
   return (
     <SafeAreaView style={styles.container}>
     <Stack.Screen options={{headerShown: false}}/>
-      <Image
-        source={require("../assets/images/ClosetCanvas_logo.png")}
-        style={{ width: 350, height: 350, marginTop: 180 }}
-      />
-
       <Text style={styles.title}> Welcome</Text>
-      <Text style={styles.subtitle}> Love Your Closet...</Text>
+        <View style={styles.logoContainer}>
+          <Image
+            source={require("../assets/images/ClosetCanvas_logo.png")}
+            style={styles.logo} 
+          />
+
+          {letters.map((letter, index) => {
+           const angle =
+              startAngleOffset +
+              (index / (letters.length - 1)) * totalArcAngle;
+
+            const containerCenter = logoContainerSize / 2;
+           const x =
+              containerCenter + textRadius * Math.sin(angle) - letterWidth / 2;
+            const y =
+              containerCenter - textRadius * Math.cos(angle) - letterHeight / 2;
+
+            return (
+              <Text
+                key={index}
+                style={[
+                  styles.circularLetter,
+                  {
+                    left: x,
+                    top: y,
+                    
+                  },
+                ]}
+              >
+                {letter === " " ? "\u00A0" : letter}
+              </Text>
+            );
+          })}
+        </View>
+
 
       <View style={styles.bottomRightContainer}>
         <Link href="/SignUp" asChild>
@@ -45,27 +88,42 @@ export default function Welcomepage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "flex-start",
+    justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#E5D7D7",
     padding: 20,
   },
+
   title: {
     fontSize: 32,
     fontWeight: "bold",
     marginTop: 20,
-    alignItems: "center",
-    marginBottom: 10,
+    //alignitems:"center", 
+    marginBottom: 10, 
     color: "#2E2E2E",
   },
-  subtitle: {
+  logoContainer: {
+    width: logoContainerSize,
+    height: logoContainerSize,
+    position: "relative", // Needed for absolute positioning
+    justifyContent: "center",
+    alignItems: "center",
+  },
+circularLetter: {
+    position: "absolute",
     fontSize: 20,
-    alignItems: "center",
-    marginLeft: 15,
-    marginBottom: 30,
     color: "#2E2E2E",
+    fontWeight: "500",
+    // Set a fixed size to help with centering calculations
+    textAlign: "center",
+    width: letterWidth,
+    height: letterHeight,
+    lineHeight: letterHeight,
   },
-
+  logo: {
+    width: logoGraphicSize,
+    height: logoGraphicSize,
+  },
   bottomRightContainer: {
     position: "absolute",
     bottom: 20,

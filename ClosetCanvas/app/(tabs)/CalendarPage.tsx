@@ -27,6 +27,7 @@ type EventItem = {
   startTime: string; // e.g., "09:00"
   endTime: string; // e.g., "10:30"
   color?: string; // Optional color
+  outfit?: ClosetDataItem[]; 
 };
 
 type EventsByDate = {
@@ -44,12 +45,11 @@ type ClosetDataItem = {
   category: string;
 };
 
-// --- Helper: Get Current Week Days ---
 const getWeekDays = (
   selected: string
 ): { key: string; dayName: string; dayNum: string }[] => {
   // Placeholder
-  const today = new Date(); // Or parse 'selected'
+  const today = new Date(); 
   return [
     { key: "2025-10-26", dayName: "SUN", dayNum: "26" },
     { key: "2025-10-27", dayName: "MON", dayNum: "27" },
@@ -61,7 +61,6 @@ const getWeekDays = (
   ];
 };
 
-// --- App Color Palette for Events ---
 const APP_EVENT_COLORS = [
   "#DE8672",
   "#F9E3B4",
@@ -71,16 +70,33 @@ const APP_EVENT_COLORS = [
   "#AB8C96",
 ];
 
+function formatTime12(time24: string): { time12: string; ampm: string } {
+  const [hourStr, minuteStr] = time24.split(":");
+  const hour = parseInt(hourStr);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12; // 0 becomes 12
+  return {
+    time12: `${hour12.toString().padStart(2, "0")}:${minuteStr}`,
+    ampm: ampm,
+  };
+}
+
 export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
   const [events, setEvents] = useState<EventsByDate>({});
   const [outfits, setOutfits] = useState<OutfitByDate>({});
+
   const [isEventModalVisible, setIsEventModalVisible] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventStartTime, setNewEventStartTime] = useState("");
   const [newEventEndTime, setNewEventEndTime] = useState("");
+  const [startAmPm, setStartAmPm] = useState("AM");
+  const [endAmPm, setEndAmPm] = useState("AM");
+  const [newEventOutfit, setNewEventOutfit] = useState<ClosetDataItem[]>([]);
 
   const [isOutfitModalVisible, setIsOutfitModalVisible] = useState(false);
   const [availableOutfits, setAvailableOutfits] = useState<ClosetDataItem[]>(
@@ -89,12 +105,12 @@ export default function CalendarPage() {
   const [tempSelectedOutfits, setTempSelectedOutfits] = useState<
     ClosetDataItem[]
   >([]);
-  const [startAmPm, setStartAmPm] = useState("AM");
-  const [endAmPm, setEndAmPm] = useState("AM");
+  const [outfitModalMode, setOutfitModalMode] = useState<"day" | "event" | null>(
+    null
+  );
 
   const weekDays = useMemo(() => getWeekDays(selectedDate), [selectedDate]);
 
-  // --- Load and Save Data ---
   useEffect(() => {
     loadData();
   }, []);
@@ -134,7 +150,6 @@ export default function CalendarPage() {
     saveData();
   }, [events, outfits]);
 
-  // --- MOVED handleDeleteEvent to be its own function ---
   const handleDeleteEvent = useCallback(
     (eventId: string) => {
       Alert.alert(
@@ -159,9 +174,9 @@ export default function CalendarPage() {
       );
     },
     [events, selectedDate]
-  ); // Add dependencies
+  );
 
-  const handleAddEvent = () => {
+  const handleSaveEvent = () => {
     const timeRegex = /^(0[1-9]|1[0-2]):([0-5]\d)$/;
     if (
       !newEventTitle ||
@@ -203,31 +218,84 @@ export default function CalendarPage() {
       return;
     }
 
-    const newEvent: EventItem = {
-      id: Date.now().toString(),
-      title: newEventTitle,
-      startTime: startTime24,
-      endTime: endTime24,
-      color:
-        APP_EVENT_COLORS[Math.floor(Math.random() * APP_EVENT_COLORS.length)],
-    };
+    if (editingEventId) {
+      setEvents((prev) => {
+        const dayEvents = prev[selectedDate] || [];
+        const updatedEvents = dayEvents.map((event) => {
+          if (event.id === editingEventId) {
+            return {
+              ...event, 
+              title: newEventTitle,
+              startTime: startTime24,
+              endTime: endTime24,
+              outfit: newEventOutfit,
+            };
+          }
+          return event; 
+        });
+        return { ...prev, [selectedDate]: updatedEvents };
+      });
+    } else {
+      const newEvent: EventItem = {
+        id: Date.now().toString(),
+        title: newEventTitle,
+        startTime: startTime24,
+        endTime: endTime24,
+        color:
+          APP_EVENT_COLORS[Math.floor(Math.random() * APP_EVENT_COLORS.length)],
+        outfit: newEventOutfit,
+      };
+      setEvents((prev) => ({
+        ...prev,
+        [selectedDate]: [...(prev[selectedDate] || []), newEvent],
+      }));
+    }
 
-    setEvents((prev) => ({
-      ...prev,
-      [selectedDate]: [...(prev[selectedDate] || []), newEvent],
-    }));
+    closeEventModal();
+  };
 
+  const openAddEventModal = () => {
+    setEditingEventId(null);
     setNewEventTitle("");
     setNewEventStartTime("");
     setNewEventEndTime("");
     setStartAmPm("AM");
     setEndAmPm("AM");
+    setNewEventOutfit([]);
+    setIsEventModalVisible(true);
+  };
+
+  const openEditEventModal = (event: EventItem) => {
+    setEditingEventId(event.id);
+    setNewEventTitle(event.title);
+    setNewEventOutfit(event.outfit || []);
+
+    const start = formatTime12(event.startTime);
+    const end = formatTime12(event.endTime);
+
+    setNewEventStartTime(start.time12);
+    setStartAmPm(start.ampm);
+    setNewEventEndTime(end.time12);
+    setEndAmPm(end.ampm);
+
+    setIsEventModalVisible(true);
+  };
+
+  const closeEventModal = () => {
     setIsEventModalVisible(false);
+    setEditingEventId(null);
+    setNewEventTitle("");
+    setNewEventStartTime("");
+    setNewEventEndTime("");
+    setStartAmPm("AM");
+    setEndAmPm("AM");
+    setNewEventOutfit([]);
   };
 
   const handleAddOutfit = () => {
     const currentOutfit = outfits[selectedDate] || [];
     setTempSelectedOutfits(currentOutfit);
+    setOutfitModalMode("day");
     setIsOutfitModalVisible(true);
   };
 
@@ -245,15 +313,26 @@ export default function CalendarPage() {
   };
 
   const confirmOutfitSelection = () => {
-    setOutfits((prev) => ({ ...prev, [selectedDate]: tempSelectedOutfits }));
+    if (outfitModalMode === "day") {
+      setOutfits((prev) => ({ ...prev, [selectedDate]: tempSelectedOutfits }));
+    } else if (outfitModalMode === "event") {
+      setNewEventOutfit(tempSelectedOutfits);
+    }
     setIsOutfitModalVisible(false);
+    setOutfitModalMode(null);
+    setTempSelectedOutfits([]);
   };
 
   const handleRemoveOutfit = () => {
     setOutfits((prev) => ({ ...prev, [selectedDate]: [] }));
   };
 
-  // --- MODIFIED: Added .sort() ---
+  const openOutfitForEvent = () => {
+    setTempSelectedOutfits(newEventOutfit);
+    setOutfitModalMode("event");
+    setIsOutfitModalVisible(true);
+  };
+
   const selectedDayEvents = (events[selectedDate] || []).sort((a, b) =>
     a.startTime.localeCompare(b.startTime)
   );
@@ -301,8 +380,15 @@ export default function CalendarPage() {
         </ScrollView>
       </View>
 
-      <ScrollView style={styles.contentArea}>
-        <Text style={styles.sectionTitle}>Outfit for {selectedDate}</Text>
+     <ScrollView
+      style={styles.contentArea}
+      contentContainerStyle={{
+        paddingHorizontal: 15, 
+        paddingTop: 15,        
+        paddingBottom: 100,    
+      }}
+    >
+      <Text style={styles.sectionTitle}>Outfit for {selectedDate}</Text>
         <View style={styles.outfitSection}>
           {selectedDayOutfit.length > 0 ? (
             <View style={styles.outfitDisplayContainer}>
@@ -322,7 +408,7 @@ export default function CalendarPage() {
                 <Ionicons name="close-circle" size={24} color="#D32F2F" />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleAddOutfit}
+                onPress={handleAddOutfit} 
                 style={styles.editOutfitButton}
               >
                 <Entypo name="edit" size={20} color="#4B0082" />
@@ -331,7 +417,7 @@ export default function CalendarPage() {
           ) : (
             <TouchableOpacity
               style={styles.addOutfitButton}
-              onPress={handleAddOutfit}
+              onPress={handleAddOutfit} 
             >
               <Ionicons name="add-circle-outline" size={30} color="#4B0082" />
               <Text style={styles.addOutfitText}>Add Outfit</Text>
@@ -365,14 +451,12 @@ export default function CalendarPage() {
               <View key={`line-${hour}`} style={styles.gridLine} />
             ))}
 
-            {/* --- MODIFIED: Replaced .map with new logic --- */}
             {(() => {
               const eventBlocks = [];
               let currentOverlapLevel = 0;
-              let maxEndTimeInGroup = -1; // End time in minutes
+              let maxEndTimeInGroup = -1; 
 
               for (const event of selectedDayEvents) {
-                // 1. Validation
                 const timeRegex = /^\d{2}:\d{2}$/;
                 if (
                   !event.startTime ||
@@ -380,17 +464,13 @@ export default function CalendarPage() {
                   !timeRegex.test(event.startTime) ||
                   !timeRegex.test(event.endTime)
                 ) {
-                  console.warn(`Skipping event...`);
-                  continue; // Use continue instead of return null
+                  continue;
                 }
-
-                // 2. Calculation
                 const hourHeight = 60;
                 const startHour = parseInt(event.startTime.split(":")[0]);
                 const startMinute = parseInt(event.startTime.split(":")[1]);
                 const endHour = parseInt(event.endTime.split(":")[0]);
                 const endMinute = parseInt(event.endTime.split(":")[1]);
-
                 if (
                   isNaN(startHour) ||
                   isNaN(startMinute) ||
@@ -398,18 +478,15 @@ export default function CalendarPage() {
                   isNaN(endMinute)
                 )
                   continue;
-
                 const startMinutes = startHour * 60 + startMinute;
                 const endMinutes = endHour * 60 + endMinute;
                 const durationMinutes = Math.max(15, endMinutes - startMinutes);
-
                 const gridStartHour = 0;
                 const gridStartMinutes = gridStartHour * 60;
                 const topPosition =
                   ((startMinutes - gridStartMinutes) / 60) * hourHeight;
                 const eventHeight = (durationMinutes / 60) * hourHeight;
                 const totalGridHeight = hourHeight * 24;
-
                 if (
                   endMinutes <= gridStartMinutes ||
                   startMinutes >= (gridStartHour + 24) * 60 ||
@@ -422,28 +499,22 @@ export default function CalendarPage() {
                   eventHeight - (clampedTop - topPosition),
                   totalGridHeight - clampedTop
                 );
-
-                // 3. --- NEW Overlap Logic ---
                 if (startMinutes >= maxEndTimeInGroup) {
-                  // This event does NOT overlap. Reset the level.
                   currentOverlapLevel = 0;
                 } else {
-                  // This event DOES overlap. Increment the level.
                   currentOverlapLevel++;
                 }
                 maxEndTimeInGroup = Math.max(maxEndTimeInGroup, endMinutes);
-
                 const overlapOffset = (currentOverlapLevel % 4) * 10;
                 const zIndex = currentOverlapLevel;
-                // --- End of New Logic ---
 
-                // 4. Create and push the component
                 eventBlocks.push(
                   <Pressable
                     key={event.id}
-                    onLongPress={() => handleDeleteEvent(event.id)} // Add delete handler
+                    onLongPress={() => handleDeleteEvent(event.id)}
+                    onPress={() => openEditEventModal(event)} 
                     style={[
-                      styles.eventBlock, // Use updated style (no left/right)
+                      styles.eventBlock,
                       {
                         top: clampedTop,
                         height: adjustedHeight,
@@ -451,9 +522,8 @@ export default function CalendarPage() {
                         borderLeftColor: event.color
                           ? darkenColor(event.color, 20)
                           : "#357ABD",
-                        // Apply dynamic layout styles
                         left: 4 + overlapOffset,
-                        right: 10, // Gives space for other items
+                        right: 10,
                         zIndex: zIndex,
                       },
                     ]}
@@ -465,12 +535,19 @@ export default function CalendarPage() {
                       {formatTime(event.startTime)} -{" "}
                       {formatTime(event.endTime)}
                     </Text>
+                    {event.outfit && event.outfit.length > 0 && (
+                      <Ionicons
+                        name="shirt"
+                        size={12}
+                        color="white"
+                        style={styles.eventOutfitIcon}
+                      />
+                    )}
                   </Pressable>
                 );
               }
-              return eventBlocks; // Render the array of components
+              return eventBlocks;
             })()}
-            {/* End of Render Events */}
           </View>
         </View>
 
@@ -481,19 +558,21 @@ export default function CalendarPage() {
         )}
       </ScrollView>
 
-      {/* --- Add Event Modal --- */}
       <Modal
         animationType="slide"
         transparent
         visible={isEventModalVisible}
-        onRequestClose={() => setIsEventModalVisible(false)}
+        onRequestClose={closeEventModal} 
       >
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setIsEventModalVisible(false)}
+          onPress={closeEventModal} 
         >
           <Pressable style={styles.modalView} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Add New Event</Text>
+            <Text style={styles.modalTitle}>
+              {editingEventId ? "Edit Event" : "Add New Event"}
+            </Text>
+
             <TextInput
               style={styles.input}
               placeholder="Event Title"
@@ -542,10 +621,37 @@ export default function CalendarPage() {
               </TouchableOpacity>
             </View>
 
+            <Text style={styles.modalSubTitle}>Outfit</Text>
+            <View style={styles.eventOutfitPreviewContainer}>
+              {newEventOutfit.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {newEventOutfit.map((item) => (
+                    <Image
+                      key={item.id}
+                      source={item.source}
+                      style={styles.eventOutfitPreviewImage}
+                    />
+                  ))}
+                </ScrollView>
+              ) : (
+                <Text style={styles.noOutfitText}>No outfit selected.</Text>
+              )}
+              <TouchableOpacity
+                style={styles.addEventOutfitButton}
+                onPress={openOutfitForEvent}
+              >
+                <Ionicons
+                  name={newEventOutfit.length > 0 ? "pencil" : "add"}
+                  size={20}
+                  color="#714054"
+                />
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.modalButtonRow}>
               <TouchableOpacity
                 style={[styles.modalButtonBase, styles.modalButtonCancel]}
-                onPress={() => setIsEventModalVisible(false)}
+                onPress={closeEventModal} 
               >
                 <Text
                   style={[styles.modalButtonText, styles.modalButtonTextCancel]}
@@ -555,16 +661,17 @@ export default function CalendarPage() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButtonBase, styles.modalButtonConfirm]}
-                onPress={handleAddEvent}
+                onPress={handleSaveEvent}
               >
-                <Text style={styles.modalButtonText}>Add Event</Text>
+                <Text style={styles.modalButtonText}>
+                  {editingEventId ? "Save Changes" : "Add Event"}
+                </Text>
               </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* --- Outfit Selection Modal --- */}
       <Modal
         animationType="slide"
         transparent
@@ -580,7 +687,9 @@ export default function CalendarPage() {
             onPress={() => {}}
           >
             <Text style={styles.modalTitle}>
-              Select Outfit for {selectedDate}
+              Select Outfit{" "}
+              {outfitModalMode === "day" && `for ${selectedDate}`}
+              {outfitModalMode === "event" && `for Event`}
             </Text>
             {availableOutfits.length === 0 ? (
               <Text style={styles.noEventsText}>
@@ -646,7 +755,7 @@ export default function CalendarPage() {
 
       <TouchableOpacity
         style={styles.floatingAddButton}
-        onPress={() => setIsEventModalVisible(true)}
+        onPress={openAddEventModal} 
       >
         <Ionicons name="add" size={32} color="white" />
       </TouchableOpacity>
@@ -654,7 +763,6 @@ export default function CalendarPage() {
   );
 }
 
-// --- Helper functions ---
 function darkenColor(hex: string, percent: number): string {
   hex = hex.replace(/^\s*#|\s*$/g, "");
   if (hex.length === 3) {
@@ -682,7 +790,7 @@ function formatTime(time24: string): string {
   return `${hour12}:${minuteStr} ${ampm}`;
 }
 
-// --- Styles ---
+
 const styles = StyleSheet.create({
   flexContainer: {
     flex: 1,
@@ -738,7 +846,6 @@ const styles = StyleSheet.create({
   },
   contentArea: {
     flex: 1,
-    padding: 15,
     backgroundColor: "#E5D7D7",
   },
   sectionTitle: {
@@ -810,7 +917,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 30,
-    backgroundColor: "#714054", // Your theme color
+    backgroundColor: "#714054",
     justifyContent: "center",
     alignItems: "center",
     elevation: 8,
@@ -818,9 +925,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
-    bottom: 30, // Distance from bottom
-    right: 30, // Distance from right
-    zIndex: 10, // Make sure it's on top
+    bottom: 30, 
+    right: 30, 
+    zIndex: 10, 
   },
   noEventsText: {
     textAlign: "center",
@@ -864,13 +971,13 @@ const styles = StyleSheet.create({
   },
   eventBlock: {
     position: "absolute",
-    backgroundColor: "#4A90E2", // Default color
+    backgroundColor: "#4A90E2", 
     borderRadius: 4,
     paddingVertical: 3,
     paddingHorizontal: 6,
     overflow: "hidden",
     borderLeftWidth: 3,
-    elevation: 1, // Subtle shadow
+    elevation: 1, 
   },
   eventBlockTitle: {
     fontSize: 12,
@@ -881,6 +988,12 @@ const styles = StyleSheet.create({
   eventBlockTime: {
     fontSize: 10,
     color: "rgba(255, 255, 255, 0.85)",
+  },
+  eventOutfitIcon: {
+    position: "absolute",
+    bottom: 3,
+    right: 5,
+    opacity: 0.8,
   },
   modalOverlay: {
     flex: 1,
@@ -999,5 +1112,45 @@ const styles = StyleSheet.create({
     right: 5,
     backgroundColor: "white",
     borderRadius: 12,
+  },
+  modalSubTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#444",
+    alignSelf: "flex-start",
+    marginBottom: 10,
+    marginTop: 10,
+
+  },
+  eventOutfitPreviewContainer: {
+    width: "100%",
+    height: 70,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    borderColor: "#eee",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    marginBottom: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  eventOutfitPreviewImage: {
+    width: 50,
+    height: 50,
+    resizeMode: "contain",
+    borderRadius: 6,
+    marginRight: 8,
+    backgroundColor: "#f0f0f0",
+  },
+  noOutfitText: {
+    flex: 1,
+    fontStyle: "italic",
+    color: "#888",
+  },
+  addEventOutfitButton: {
+    padding: 10,
+    backgroundColor: "#eee",
+    borderRadius: 20,
   },
 });

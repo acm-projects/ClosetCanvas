@@ -185,8 +185,8 @@ const getUserDataFromToken = async (
         keyboardShouldPersistTaps="handled"
       >
         <Image
-          source={require("../assets/images/logo.png")}
-          style={{ width: 150, height: 150 }}
+          source={require("../assets/images/ClosetCanvas_logo.png")}
+          style={{ width: 250, height: 250 }}
         />
 
         <Text style={styles.title}>Login</Text>

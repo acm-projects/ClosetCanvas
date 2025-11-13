@@ -325,8 +325,8 @@ export default function SignupScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Image
-            source={require("../assets/images/logo.png")}
-            style={{ width: 150, height: 150, marginBottom: 10 }}
+            source={require("../assets/images/ClosetCanvas_logo.png")}
+            style={{ width: 250, height: 250, marginBottom: -5 }}
           />
           <Text style={styles.title}>Sign Up</Text>
 
@@ -481,7 +481,7 @@ export default function SignupScreen() {
           <View style={styles.signupContainer}>
             <Text style={styles.text}>Already have an account?</Text>
             <Link href="/Loginpage" asChild>
-              <TouchableOpacity style={styles.button2}>
+              <TouchableOpacity >
                 <Text style={styles.buttonText2}>Login</Text>
               </TouchableOpacity>
             </Link>
