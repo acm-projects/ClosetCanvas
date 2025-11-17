@@ -1,20 +1,4 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-
-function getWeatherSummary(temp: number, description: string, wind: number): string {
-  if (temp >= 68 && temp <= 80 && !description.includes("rain")) {
-    return "Perfect Day";
-  } else if (temp < 50) {
-    return "Cold Day";
-  } else if (temp > 85) {
-    return "Hot Day";
-  } else if (description.includes("rain")) {
-    return "Rainy Day";
-  } else if (wind > 15) {
-    return "Windy";
-  } else {
-    return "Normal Day";
-  }
-}
 import {
   View,
   Text,
@@ -22,16 +6,20 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  ScrollView,
   Dimensions,
   Animated,
   Modal,
   Pressable,
-  ImageStyle,
+  SafeAreaView,
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { PanGestureHandler, State } from "react-native-gesture-handler";
+import {
+  PanGestureHandler,
+  State,
+  LongPressGestureHandler,
+  ScrollView,
+} from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
@@ -44,9 +32,12 @@ const apiKey = Constants.expoConfig?.extra?.OPENWEATHER_API_KEY || "";
 // -------- Types ----------
 type ClosetDataItem = {
   id: number;
-  source: any; // { uri } or require(...)
+  source: any;
   type: "local" | "user";
   category: string;
+  description?: string;
+  goodFor?: string[];
+  event?: string[];
 };
 
 type GetClosetItemsResp = {
@@ -80,6 +71,22 @@ const OUTFITS_URL = `https://1dzpo66n78.execute-api.us-east-2.amazonaws.com/prod
 const CREATE_OUTFITS_URL = `https://nx736y3txb.execute-api.us-east-2.amazonaws.com/default/createOutfits`;
 
 // -------- helpers ----------
+function getWeatherSummary(temp: number, description: string, wind: number): string {
+  if (temp >= 68 && temp <= 80 && !description.includes("rain")) {
+    return "Perfect Day";
+  } else if (temp < 50) {
+    return "Cold Day";
+  } else if (temp > 85) {
+    return "Hot Day";
+  } else if (description.includes("rain")) {
+    return "Rainy Day";
+  } else if (wind > 15) {
+    return "Windy";
+  } else {
+    return "Normal Day";
+  }
+}
+
 const uuidToInt = (s: string): number => {
   if (!s) return Date.now();
   const hex = s.replace(/-/g, "").slice(0, 8);
@@ -104,20 +111,86 @@ const mapClothingTypeToCategory = (t?: number | null): string => {
   }
 };
 
-// =========================================================
-//                     COMPONENT
-// =========================================================
+// Mock item details for display (you can enhance this with real data)
+const getItemDetails = (category: string) => {
+  const details: Record<string, { description: string; goodFor: string[]; event: string[] }> = {
+    Tops: {
+      description: "A versatile top perfect for various occasions.",
+      goodFor: ["Sunny", "Warm", "Layering"],
+      event: ["Casual", "Work", "Brunch"],
+    },
+    Pants: {
+      description: "Comfortable and stylish pants.",
+      goodFor: ["Any Weather"],
+      event: ["Casual", "Everyday"],
+    },
+    Shoes: {
+      description: "Comfortable footwear for daily activities.",
+      goodFor: ["Walking"],
+      event: ["Casual"],
+    },
+    Dresses: {
+      description: "An elegant dress for special occasions.",
+      goodFor: ["Sunny", "Warm"],
+      event: ["Party", "Brunch", "Day Out"],
+    },
+    Jackets: {
+      description: "A cozy jacket for cooler weather.",
+      goodFor: ["Cool", "Cloudy", "Layering"],
+      event: ["Casual", "Outdoor"],
+    },
+  };
+  return details[category] || {
+    description: "A great piece for your wardrobe.",
+    goodFor: ["Various occasions"],
+    event: ["Multiple events"],
+  };
+};
+
 export default function HomePage() {
   const [outfitStack, setOutfitStack] = useState<ClosetDataItem[][]>([]);
   const [likeModalVisible, setLikeModalVisible] = useState(false);
   const [swipedItem, setSwipedItem] = useState<ClosetDataItem[] | null>(null);
+  const [isFlipped, setIsFlipped] = useState(false);
 
-   const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [weather, setWeather] = useState<{ temp: number; condition: string; wind: number } | null>(null);
 
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Animation refs
+  const pan = useRef(new Animated.ValueXY()).current;
+  const flipAnim = useRef(new Animated.Value(0)).current;
+  const panRef = useRef<PanGestureHandler>(null);
+  const longPressRef = useRef<LongPressGestureHandler>(null);
+  const innerScrollRef = useRef<ScrollView>(null);
+
+  const rotate = pan.x.interpolate({
+    inputRange: [-width / 2, 0, width / 2],
+    outputRange: ["-10deg", "0deg", "10deg"],
+    extrapolate: "clamp",
+  });
+
+  const cardOpacity = pan.x.interpolate({
+    inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
+    outputRange: [0.5, 1, 0.5],
+  });
+
+  const frontRotateY = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "180deg"],
+  });
+
+  const backRotateY = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["180deg", "360deg"],
+  });
+
+  // Weather fetch
   useEffect(() => {
-     async function getCurrentLocationAndWeather() {
+    async function getCurrentLocationAndWeather() {
       try {
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
@@ -128,7 +201,6 @@ export default function HomePage() {
         let loc = await Location.getCurrentPositionAsync({});
         setLocation(loc);
 
-        // Fetch weather using lat/lon
         const lat = loc.coords.latitude;
         const lon = loc.coords.longitude;
         const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`;
@@ -147,21 +219,6 @@ export default function HomePage() {
           condition: data.weather[0].main,
           wind: data.wind.speed,
         });
-    function getWeatherSummary(temp: number, description: string, wind: number) {
-    if (temp >= 20 && temp <= 27 && !description.includes("rain")) {
-      return "Perfect Day 🌞";
-    } else if (temp < 10) {
-      return "Cold Day 🧣";
-    } else if (temp > 30) {
-      return "Hot Day 🥵";
-    } else if (description.includes("rain")) {
-      return "Rainy Day ☔";
-    } else if (wind > 15) {
-            return "Windy";
-    } else {
-      return "Normal Day 🌤️";
-    }
-  }
       } catch (err) {
         console.error(err);
         setErrorMsg("Failed to get location or weather");
@@ -171,166 +228,122 @@ export default function HomePage() {
     getCurrentLocationAndWeather();
   }, []);
 
-  const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  // animation
-  const pan = useRef(new Animated.ValueXY()).current;
-  const rotate = pan.x.interpolate({
-    inputRange: [-width / 2, 0, width / 2],
-    outputRange: ["-10deg", "0deg", "10deg"],
-    extrapolate: "clamp",
-  });
-  const cardOpacity = pan.x.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
-    outputRange: [0.5, 1, 0.5],
-  });
-
-  // --------------------------------
-  //           DATA LOAD
-  // --------------------------------
-useEffect(() => {
-  (async () => {
-    const creds = await getCredentials();
-    
-    if (!creds?.accessToken) {
-      console.warn("[Home] No access token found.");
-      Alert.alert("Not logged in", "Please log in again.");
-      return;
-    }
-    
-    // Decode the JWT to get the actual user ID from the 'sub' claim
-    try {
-      const tokenParts = creds.accessToken.split('.');
-      const payload = JSON.parse(atob(tokenParts[1]));
-      const actualUserId = payload.sub; // This is the real user UUID
+  // User ID setup
+  useEffect(() => {
+    (async () => {
+      const creds = await getCredentials();
       
-      console.log("[Home] Decoded user ID from token:", actualUserId);
-      setUserId(actualUserId);
-    } catch (e) {
-      console.error("[Home] Failed to decode token:", e);
-      Alert.alert("Error", "Failed to extract user information");
-    }
-  })();
-}, []);
+      if (!creds?.accessToken) {
+        console.warn("[Home] No access token found.");
+        Alert.alert("Not logged in", "Please log in again.");
+        return;
+      }
+      
+      try {
+        const tokenParts = creds.accessToken.split('.');
+        const payload = JSON.parse(atob(tokenParts[1]));
+        const actualUserId = payload.sub;
+        
+        console.log("[Home] Decoded user ID from token:", actualUserId);
+        setUserId(actualUserId);
+      } catch (e) {
+        console.error("[Home] Failed to decode token:", e);
+        Alert.alert("Error", "Failed to extract user information");
+      }
+    })();
+  }, []);
 
-  // single reusable loader (used on first load and after createOutfits)
+  // Load outfits
   const loadOutfitStackForUser = useCallback(
-  async (uid: string) => {
-    //console.log("[Home] Loading outfits for UUID:", uid);
-    setLoading(true);
-    try {
-      // 1) fetch items (for URIs)
-      const itemsUrl = `${ITEMS_URL}?user_id=${encodeURIComponent(uid)}&signed=1&expiresIn=3600`;
-      //console.log("[Home] GET Items URL:", itemsUrl);
-      const itemsRes = await fetch(itemsUrl);
-      const itemsRaw = await itemsRes.text();
-      //console.log("[Home] Items status:", itemsRes.status);
-      //console.log("[Home] Items raw (first 500 chars):", itemsRaw.substring(0, 500));
-      
-      const itemsJson: GetClosetItemsResp = JSON.parse(itemsRaw || "{}");
-      const itemsList = itemsJson?.items || [];
-      console.log("[Home] Total items fetched:", itemsList.length);
+    async (uid: string) => {
+      setLoading(true);
+      try {
+        const itemsUrl = `${ITEMS_URL}?user_id=${encodeURIComponent(uid)}&signed=1&expiresIn=3600`;
+        const itemsRes = await fetch(itemsUrl);
+        const itemsRaw = await itemsRes.text();
+        
+        const itemsJson: GetClosetItemsResp = JSON.parse(itemsRaw || "{}");
+        const itemsList = itemsJson?.items || [];
 
-      const itemsById = new Map<
-        string,
-        { uri: string | null | undefined; clothingType?: number | null }
-      >();
-      for (const it of itemsList) {
-        const key = (it.id || it.item_id || "").toString();
-        if (key) {
-          itemsById.set(key, { uri: it.uri, clothingType: it.clothingType });
-          //console.log("[Home] Added item to map:", key, "clothingType:", it.clothingType);
+        const itemsById = new Map<
+          string,
+          { uri: string | null | undefined; clothingType?: number | null }
+        >();
+        for (const it of itemsList) {
+          const key = (it.id || it.item_id || "").toString();
+          if (key) {
+            itemsById.set(key, { uri: it.uri, clothingType: it.clothingType });
+          }
         }
+
+        const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(uid)}`;
+        const outfitsRes = await fetch(outfitsUrl);
+        const outfitsRaw = await outfitsRes.text();
+        
+        const outfitsJson: GetOutfitsResp = JSON.parse(outfitsRaw || "{}");
+        const outfits = outfitsJson?.outfits || [];
+
+        const built: ClosetDataItem[][] = outfits.map((o) => {
+          return o.items
+            .map((oi) => {
+              const meta = itemsById.get(oi.itemId);
+              const uri = meta?.uri || null;
+              if (!uri) {
+                console.warn("[Home] ⚠️ No URI for item:", oi.itemId);
+                return null;
+              }
+              const category = mapClothingTypeToCategory(oi.clothingType);
+              const details = getItemDetails(category);
+              
+              return {
+                id: uuidToInt(oi.itemId),
+                source: { uri },
+                type: "user",
+                category,
+                ...details,
+              } as ClosetDataItem;
+            })
+            .filter(Boolean) as ClosetDataItem[];
+        });
+
+        const filtered = built.filter((arr) => arr.length > 0);
+        setOutfitStack(filtered);
+        await AsyncStorage.setItem("outfitStack", JSON.stringify(filtered));
+      } catch (e) {
+        console.error("[Home] Failed to load outfits or items:", e);
+        const cached = await AsyncStorage.getItem("outfitStack");
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            setOutfitStack(parsed);
+          } catch {}
+        }
+      } finally {
+        setLoading(false);
       }
-      //console.log("[Home] itemsById size:", itemsById.size);
-
-      // 2) fetch outfits
-      const outfitsUrl = `${OUTFITS_URL}?user_id=${encodeURIComponent(uid)}`;
-      //console.log("[Home] GET Outfits URL:", outfitsUrl);
-      const outfitsRes = await fetch(outfitsUrl);
-      const outfitsRaw = await outfitsRes.text();
-      //console.log("[Home] Outfits status:", outfitsRes.status);
-      //console.log("[Home] Outfits RAW response:", outfitsRaw); // ✅ KEY LOG
-      
-      const outfitsJson: GetOutfitsResp = JSON.parse(outfitsRaw || "{}");
-      //console.log("[Home] Outfits JSON parsed:", JSON.stringify(outfitsJson, null, 2)); // ✅ KEY LOG
-      
-      const outfits = outfitsJson?.outfits || [];
-
-      //console.log("First outfit:", JSON.stringify(outfits[0], null, 2));
-      //console.log("[Home] Outfits returned from backend:", outfits.length);
-
-      // 3) build stack
-      const built: ClosetDataItem[][] = outfits.map((o, idx) => {
-        console.log(`[Home] Processing outfit ${idx}:`, o.outfit_id, "with", o.items?.length, "items");
-        return o.items
-          .map((oi) => {
-            console.log("[Home] Looking up itemId:", oi.itemId);
-            const meta = itemsById.get(oi.itemId);
-            console.log("[Home] Found meta:", meta ? `URI exists: ${!!meta.uri}` : "NOT FOUND");
-            const uri = meta?.uri || null;
-            if (!uri) {
-              console.warn("[Home] ⚠️ No URI for item:", oi.itemId);
-              return null;
-            }
-            return {
-              id: uuidToInt(oi.itemId),
-              source: { uri },
-              type: "user",
-              category: mapClothingTypeToCategory(oi.clothingType),
-            } as ClosetDataItem;
-          })
-          .filter(Boolean) as ClosetDataItem[]
-      });
-
-      const filtered = built.filter((arr) => arr.length > 0);
-      console.log("[Home] Built outfits for display:", filtered.length);
-      setOutfitStack(filtered);
-      await AsyncStorage.setItem("outfitStack", JSON.stringify(filtered));
-    } catch (e) {
-      console.error("[Home] Failed to load outfits or items:", e);
-      const cached = await AsyncStorage.getItem("outfitStack");
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setOutfitStack(parsed);
-        } catch {}
-      }
-    } finally {
-      setLoading(false);
-    }
-  },
-  []
-);
-
+    },
+    []
+  );
 
   useEffect(() => {
     if (userId) {
       loadOutfitStackForUser(userId).then(() => {
-        // If no outfits exist after loading, create them
         if (outfitStack.length === 0) {
-          console.log("[Home] No outfits found, triggering createOutfits...");
           createOutfitsAndReload();
         }
       });
     }
   }, [userId]);
 
-  // --------------------------------
-  //     CREATE OUTFITS WHEN EMPTY
-  // --------------------------------
   const createOutfitsAndReload = useCallback(async () => {
     if (!userId) return;
     try {
-      //console.log("[CreateOutfits] POST", CREATE_OUTFITS_URL);
       const body = {
-        userId,               // ⚠️ Uses the user's UserID from state (your working auth)
+        userId,
         style: "business",
         numberOfOutfits: 3,
         outfitTypes: [1, 2],
       };
-      //console.log("[CreateOutfits] body:", body);
 
       const res = await fetch(CREATE_OUTFITS_URL, {
         method: "POST",
@@ -339,23 +352,35 @@ useEffect(() => {
       });
 
       const raw = await res.text();
-      //console.log("[CreateOutfits] status:", res.status, "raw:", raw);
       if (!res.ok) {
         console.warn("[CreateOutfits] Failed to create outfits");
       }
 
-      // after creation returns, pull latest stack
       await loadOutfitStackForUser(userId);
     } catch (e) {
       console.error("[CreateOutfits] Error:", e);
-      // even if it fails, try to reload so user sees any existing outfits
       if (userId) await loadOutfitStackForUser(userId);
     }
   }, [userId, loadOutfitStackForUser]);
 
-  // --------------------------------
-  //         SWIPE BEHAVIOR
-  // --------------------------------
+  // Flip handler
+  const handleFlip = () => {
+    const toValue = isFlipped ? 0 : 1;
+    Animated.spring(flipAnim, {
+      toValue,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+    setIsFlipped(!isFlipped);
+  };
+
+  const onLongPressStateChange = (event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      handleFlip();
+    }
+  };
+
+  // Swipe handlers
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: pan.x, translationY: pan.y } }],
     { useNativeDriver: false }
@@ -395,8 +420,17 @@ useEffect(() => {
     ],
   };
 
-  const onHandlerStateChange = (event: any) => {
+  const onSwipeStateChange = (event: any) => {
     if (event.nativeEvent.oldState === State.ACTIVE) {
+      if (isFlipped) {
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          friction: 4,
+          useNativeDriver: false,
+        }).start();
+        return;
+      }
+
       const { translationX } = event.nativeEvent;
       if (translationX > SWIPE_THRESHOLD) {
         Animated.timing(pan, {
@@ -425,17 +459,17 @@ useEffect(() => {
     setLikeModalVisible(true);
   };
 
-  // 🔔 Trigger createOutfits when the stack becomes empty
   const removeTopCard = () => {
     setOutfitStack((prev) => {
       const next = prev.slice(1);
       if (next.length === 0) {
-        // call your createOutfits endpoint, then reload
         createOutfitsAndReload();
       }
       return next;
     });
     pan.setValue({ x: 0, y: 0 });
+    setIsFlipped(false);
+    flipAnim.setValue(0);
   };
 
   const handleAddToWardrobe = async (isFavorite: boolean) => {
@@ -463,19 +497,17 @@ useEffect(() => {
     }
   };
 
-  // --------------------------------
-  //            RENDER
-  // --------------------------------
+  // Card components
   const CardContent = ({ outfit }: { outfit: ClosetDataItem[] }) => (
     <>
       <View style={styles.cardImageContainer}>
         {outfit.map((item, idx) => {
-          let style: ImageStyle = styles.imageShirt;
+          let style = styles.imageShirt;
           if (item.category === "Pants") style = styles.imagePants;
           if (item.category === "Shoes") style = styles.imageShoes;
           if (item.category === "Dresses") style = styles.imageDress;
 
-          return <Image key={item.id + '-' + idx} source={item.source} style={style} />;
+          return <Image key={item.id + "-" + idx} source={item.source} style={style} />;
         })}
       </View>
 
@@ -483,7 +515,7 @@ useEffect(() => {
         <Text style={styles.hingeTitle}>This outfit includes:</Text>
         <View style={styles.categoryRow}>
           {outfit.map((item, idx) => (
-            <View key={item.id + '-' + idx} style={styles.categoryTag}>
+            <View key={item.id + "-" + idx} style={styles.categoryTag}>
               <Text style={styles.categoryTagText}>{item.category}</Text>
             </View>
           ))}
@@ -492,89 +524,186 @@ useEffect(() => {
     </>
   );
 
+  const CardBackContent = ({
+    outfit,
+    onClose,
+    scrollRef,
+  }: {
+    outfit: ClosetDataItem[];
+    onClose: () => void;
+    scrollRef: React.Ref<ScrollView> | null;
+  }) => (
+    <SafeAreaView style={{ flex: 1 }}>
+      <TouchableOpacity style={styles.cardBackCloseButton} onPress={onClose}>
+        <Ionicons name="close" size={24} color="#3C2332" />
+        <Text style={styles.cardBackCloseText}>Back to outfit</Text>
+      </TouchableOpacity>
+
+      <ScrollView
+        ref={scrollRef}
+        style={styles.cardBackScrollContainer}
+        contentContainerStyle={styles.cardBackScroll}
+      >
+        {outfit.map((item) => (
+          <View key={item.id} style={styles.itemDetailContainer}>
+            <View style={styles.itemDetailHeader}>
+              <Image source={item.source} style={styles.itemDetailImage} />
+              <Text style={styles.itemDetailTitle}>{item.category}</Text>
+            </View>
+            <Text style={styles.itemDetailDescription}>{item.description}</Text>
+
+            <Text style={styles.itemDetailSectionTitle}>Good for...</Text>
+            <View style={styles.itemDetailTagRow}>
+              {item.goodFor?.map((tag) => (
+                <View key={tag} style={styles.itemDetailTag}>
+                  <Text style={styles.itemDetailTagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.itemDetailSectionTitle}>Perfect for...</Text>
+            <View style={styles.itemDetailTagRow}>
+              {item.event?.map((tag) => (
+                <View key={tag} style={styles.itemDetailTag}>
+                  <Text style={styles.itemDetailTagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
+  );
+
   const renderCards = () => {
-    return outfitStack
-      .map((outfit, index) => {
-        const cardKey = outfit[0].id + '-' + index;
-        if (index === 0) {
-          return (
-            <PanGestureHandler
-              key={cardKey}
-              onGestureEvent={onGestureEvent}
-              onHandlerStateChange={onHandlerStateChange}
-            >
-              <Animated.View
-                style={[
-                  styles.outfitCard,
-                  styles.topCard,
-                  {
-                    transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }],
-                    opacity: cardOpacity,
-                  },
-                ]}
-              >
-                <CardContent outfit={outfit} />
-                <Animated.View style={[styles.likeIndicator, likeOpacityAndScale]}>
-                  <Ionicons name="checkmark-circle-outline" size={80} color="green" />
-                </Animated.View>
-                <Animated.View style={[styles.nopeIndicator, nopeOpacityAndScale]}>
-                  <Ionicons name="close-circle-outline" size={80} color="red" />
-                </Animated.View>
-              </Animated.View>
-            </PanGestureHandler>
-          );
-        }
-        if (index === 1) {
-          return (
-            <Animated.View key={cardKey} style={[styles.outfitCard, styles.nextCard]}>
-              <CardContent outfit={outfit} />
-            </Animated.View>
-          );
-        }
+  return outfitStack
+    .map((outfit, index) => {
+      const isTopCard = index === 0;
+      const isNextCard = index === 1;
+
+      const cardStyle = isTopCard
+        ? {
+            transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }],
+            opacity: cardOpacity,
+          }
+        : isNextCard
+        ? styles.nextCard
+        : styles.hiddenCard;
+
+      if (index > 1) {
         return null;
-      })
-      .reverse();
-  };
+      }
+
+      return (
+        <PanGestureHandler
+          key={outfit[0].id}
+          onGestureEvent={isTopCard ? onGestureEvent : undefined}
+          onHandlerStateChange={isTopCard ? onSwipeStateChange : undefined}
+          enabled={isTopCard && !isFlipped}
+          simultaneousHandlers={isTopCard ? longPressRef : undefined}
+        >
+          <Animated.View
+            style={[
+              styles.outfitCard,
+              cardStyle,
+              isTopCard ? styles.topCard : {},
+            ]}
+          >
+            <LongPressGestureHandler
+              ref={isTopCard ? longPressRef : undefined}
+              onHandlerStateChange={isTopCard ? onLongPressStateChange : undefined}
+              minDurationMs={400}
+              enabled={isTopCard}
+              simultaneousHandlers={isTopCard ? innerScrollRef : undefined}
+            >
+              <View style={{ flex: 1 }}>
+                <Animated.View
+                  style={[
+                    styles.cardSide,
+                    styles.cardFront,
+                    {
+                      transform: [{ rotateY: isTopCard ? frontRotateY : "0deg" }],
+                    },
+                  ]}
+                >
+                  <CardContent outfit={outfit} />
+                </Animated.View>
+
+                <Animated.View
+                  style={[
+                    styles.cardSide,
+                    styles.cardBack,
+                    {
+                      transform: [{ rotateY: isTopCard ? backRotateY : "180deg" }],
+                    },
+                  ]}
+                >
+                  <CardBackContent
+                    outfit={outfit}
+                    onClose={handleFlip}
+                    scrollRef={isTopCard ? innerScrollRef : null}
+                  />
+                </Animated.View>
+              </View>
+            </LongPressGestureHandler>
+
+            <Animated.View style={[styles.likeIndicator, likeOpacityAndScale]}>
+              <Ionicons name="checkmark-circle-outline" size={80} color="green" />
+            </Animated.View>
+
+            <Animated.View style={[styles.nopeIndicator, nopeOpacityAndScale]}>
+              <Ionicons name="close-circle-outline" size={80} color="red" />
+            </Animated.View>
+          </Animated.View>
+        </PanGestureHandler>
+      );
+    })
+    .reverse();
+};
 
   return (
     <View style={{ flex: 1 }}>
-
       <ImageBackground
         source={require("../../assets/images/Group 32.png")}
         style={styles.background}
         imageStyle={{ resizeMode: "cover" }}
       />
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.weatherCard}>
-    <Ionicons name="cloud-outline" size={40} color="#F9E3B4" />
-  <View>
-    {errorMsg ? (
-      <>
-        <Text style={styles.weatherText}>Error</Text>
-        <Text style={styles.weatherSub}>{errorMsg}</Text>
-      </>
-    ) : weather ? (
-      <>
-        <Text style={styles.weatherText}>{weather.condition}</Text>
-        <Text style={styles.weatherSub}>
-          {Math.round(weather.temp)}°F - {getWeatherSummary(weather.temp, weather.condition.toLowerCase(), weather.wind)}
-        </Text>
-      </>
-    ) : (
-      <>
-        <Text style={styles.weatherText}>Loading...</Text>
-        <Text style={styles.weatherSub}>Fetching weather</Text>
-      </>
-    )}
-  </View>
-</View>
+          <Ionicons name="cloud-outline" size={40} color="#F9E3B4" />
+          <View>
+            {errorMsg ? (
+              <>
+                <Text style={styles.weatherText}>Error</Text>
+                <Text style={styles.weatherSub}>{errorMsg}</Text>
+              </>
+            ) : weather ? (
+              <>
+                <Text style={styles.weatherText}>{weather.condition}</Text>
+                <Text style={styles.weatherSub}>
+                  {Math.round(weather.temp)}°F -{" "}
+                  {getWeatherSummary(weather.temp, weather.condition.toLowerCase(), weather.wind)}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.weatherText}>Loading...</Text>
+                <Text style={styles.weatherSub}>Fetching weather</Text>
+              </>
+            )}
+          </View>
+        </View>
 
-
-     {/* Outfit Description */}
         <View style={styles.textSection}>
           <Text style={styles.outfitTitle}>Today's Suggestion</Text>
-          <Text style={styles.outfitSubtitle}>Swipe right to save, left to pass</Text>
+          <Text style={styles.outfitSubtitle}>
+            Swipe to decide, or long-press for details
+          </Text>
         </View>
 
         <View style={styles.cardStackContainer}>
@@ -591,20 +720,35 @@ useEffect(() => {
         </View>
       </ScrollView>
 
-      <Modal animationType="fade" transparent visible={likeModalVisible} onRequestClose={() => setLikeModalVisible(false)}>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={likeModalVisible}
+        onRequestClose={() => setLikeModalVisible(false)}
+      >
         <Pressable style={styles.modalOverlay} onPress={() => setLikeModalVisible(false)}>
           <Pressable style={styles.modalView} onPress={() => {}}>
             <Text style={styles.modalTitle}>Add to Wardrobe</Text>
-            <Text style={styles.modalText}>Save this outfit to your favorites, or just to your base wardrobe?</Text>
+            <Text style={styles.modalText}>
+              Save this outfit to your favorites, or just to your base wardrobe?
+            </Text>
 
-            <TouchableOpacity style={[styles.modalButton, styles.modalButtonFavorite]} onPress={() => handleAddToWardrobe(true)}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalButtonFavorite]}
+              onPress={() => handleAddToWardrobe(true)}
+            >
               <Ionicons name="heart" size={20} color="white" />
               <Text style={styles.modalButtonText}>Add to Favorites</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.modalButton, styles.modalButtonWardrobe]} onPress={() => handleAddToWardrobe(false)}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalButtonWardrobe]}
+              onPress={() => handleAddToWardrobe(false)}
+            >
               <Ionicons name="add" size={20} color="#4B0082" />
-              <Text style={[styles.modalButtonText, styles.modalButtonTextWardrobe]}>Add to Wardrobe</Text>
+              <Text style={[styles.modalButtonText, styles.modalButtonTextWardrobe]}>
+                Add to Wardrobe
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setLikeModalVisible(false)} style={{ marginTop: 15 }}>
@@ -617,11 +761,17 @@ useEffect(() => {
   );
 }
 
-// ---------------- STYLES ----------------
 const styles = StyleSheet.create({
   container: { flex: 1 },
   background: { flex: 1, width, height, position: "absolute", top: 0, left: 0 },
-  scrollContent: { flexGrow: 1, justifyContent: "flex-start", alignItems: "center", width: "100%", paddingHorizontal: 0, margin: 0 },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "flex-start",
+    alignItems: "center",
+    width: "100%",
+    paddingHorizontal: 0,
+    margin: 0,
+  },
 
   weatherCard: {
     flexDirection: "row",
@@ -639,12 +789,28 @@ const styles = StyleSheet.create({
   weatherText: { fontWeight: "bold", color: "#F9E3B4", fontSize: 16 },
   weatherSub: { fontSize: 13, color: "#F9E3B4" },
   textSection: { alignItems: "center", marginVertical: 25 },
-  outfitTitle: { fontFamily: "monospace", fontSize: 22, fontWeight: "700", textAlign: "center", color: "#3C2A4D" },
-  outfitSubtitle: { fontFamily: "monospace", fontSize: 14, color: "#444", textAlign: "center" },
+  outfitTitle: {
+    fontFamily: "monospace",
+    fontSize: 22,
+    fontWeight: "700",
+    textAlign: "center",
+    color: "#3C2A4D",
+  },
+  outfitSubtitle: {
+    fontFamily: "monospace",
+    fontSize: 14,
+    color: "#444",
+    textAlign: "center",
+  },
 
-  cardStackContainer: { width, height: 550, justifyContent: "center", alignItems: "center", marginBottom: 20 },
+  cardStackContainer: {
+    width,
+    height: 550,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
   outfitCard: {
-    backgroundColor: "#714054",
     borderRadius: 15,
     width: width * 0.85,
     height: 520,
@@ -656,23 +822,103 @@ const styles = StyleSheet.create({
     position: "absolute",
     overflow: "hidden",
   },
-  topCard: {},
-  nextCard: { transform: [{ scale: 0.95 }], top: 20 },
-  noMoreCards: { justifyContent: "center", alignItems: "center", height: "100%" },
+  topCard: {
+    position: "absolute",
+    width: width * 0.85,
+    height: 520,
+    zIndex: 1,
+  },
+  nextCard: {
+    backgroundColor: "#714054",
+    transform: [{ scale: 0.95 }],
+    top: 20,
+    zIndex: 0,
+  },
+  hiddenCard: {
+    display: "none",
+  },
+  noMoreCards: {
+    justifyContent: "center",
+    alignItems: "center",
+    height: "100%",
+    paddingHorizontal: 20,
+  },
 
-  cardImageContainer: { height: "75%", justifyContent: "center", alignItems: "center" },
-  imageShirt: { width: 210, height: 230, resizeMode: "contain", marginHorizontal: 4, marginBottom: -25, zIndex: 2 },
-  imagePants: { width: 180, height: 234, resizeMode: "contain", marginHorizontal: 4,marginTop: -35, zIndex: 1 },
-  imageShoes: { width: 70, height: 50, resizeMode: "contain", marginHorizontal: 4, zIndex: 1, alignSelf: "flex-end" },
-  imageDress: { width: 110, height: 160, resizeMode: "contain", marginHorizontal: 4, zIndex: 1 },
+  cardImageContainer: {
+    height: "75%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#714054",
+  },
+  imageShirt: {
+    width: "70%",
+    height: "50%",
+    resizeMode: "contain",
+    position: "absolute",
+    top: "-2%",
+    zIndex: 2,
+  },
+  imagePants: {
+    width: "80%",
+    height: "70%",
+    resizeMode: "contain",
+    marginTop: "20%",
+    position: "absolute",
+    top: "15%",
+    zIndex: 1,
+  },
+  imageShoes: {
+    position: "absolute",
+    width: "35%",
+    height: "55%",
+    resizeMode: "contain",
+    bottom: "10%",
+    left: "60%",
+    zIndex: 3,
+    transform: [{ rotate: "-10deg" }],
+  },
+  imageDress: {
+    width: "90%",
+    height: "90%",
+    resizeMode: "contain",
+  },
 
-  hingeSection: { height: "25%", backgroundColor: "#AB8C96", borderTopWidth: 0, borderColor: "#ddd", padding: 15 },
-  hingeTitle: { fontSize: 20, fontWeight: "600", color: "#3C2332", marginBottom: 10 },
-  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  categoryTag: { backgroundColor: "#714054", borderRadius: 7, paddingVertical: 5, paddingHorizontal: 20 },
-  categoryTagText: { color: "white", fontWeight: "600", fontSize: 15 },
+  hingeSection: {
+    height: "25%",
+    backgroundColor: "#AB8C96",
+    borderTopWidth: 0,
+    borderColor: "#ddd",
+    padding: 15,
+  },
+  hingeTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#3C2332",
+    marginBottom: 10,
+  },
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  categoryTag: {
+    backgroundColor: "#714054",
+    borderRadius: 7,
+    paddingVertical: 5,
+    paddingHorizontal: 20,
+  },
+  categoryTagText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 15,
+  },
 
-  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)" },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
   modalView: {
     width: "85%",
     backgroundColor: "white",
@@ -685,15 +931,140 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  modalTitle: { fontSize: 22, fontWeight: "bold", color: "#333", marginBottom: 10 },
-  modalText: { fontSize: 16, color: "#555", textAlign: "center", marginBottom: 24 },
-  modalButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", borderRadius: 10, paddingVertical: 12, marginBottom: 10 },
-  modalButtonFavorite: { backgroundColor: "#ff0026ff" },
-  modalButtonWardrobe: { backgroundColor: "#E6E6FA" },
-  modalButtonText: { color: "white", fontSize: 16, fontWeight: "bold", marginLeft: 10 },
-  modalButtonTextWardrobe: { color: "#4B0082" },
-  modalCancelText: { fontSize: 14, color: "#767575", fontWeight: "500" },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 10,
+  },
+  modalText: {
+    fontSize: 16,
+    color: "#555",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  modalButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  modalButtonFavorite: {
+    backgroundColor: "#ff0026ff",
+  },
+  modalButtonWardrobe: {
+    backgroundColor: "#E6E6FA",
+  },
+  modalButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginLeft: 10,
+  },
+  modalButtonTextWardrobe: {
+    color: "#4B0082",
+  },
+  modalCancelText: {
+    fontSize: 14,
+    color: "#767575",
+    fontWeight: "500",
+  },
 
-  likeIndicator: { position: "absolute", top: "30%", left: 20, zIndex: 10 },
-  nopeIndicator: { position: "absolute", top: "30%", right: 20, zIndex: 10 },
+  likeIndicator: {
+    position: "absolute",
+    top: "30%",
+    left: 20,
+    zIndex: 10,
+  },
+  nopeIndicator: {
+    position: "absolute",
+    top: "30%",
+    right: 20,
+    zIndex: 10,
+  },
+
+  cardSide: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backfaceVisibility: "hidden",
+  },
+  cardFront: {},
+  cardBack: {
+    backgroundColor: "#AB8C96",
+  },
+  cardBackScrollContainer: {
+    flex: 1,
+  },
+  cardBackCloseButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+    gap: 5,
+  },
+  cardBackCloseText: {
+    color: "#3C2332",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  cardBackScroll: {
+    padding: 15,
+    paddingTop: 0,
+  },
+  itemDetailContainer: {
+    marginBottom: 20,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    padding: 12,
+  },
+  itemDetailHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  itemDetailImage: {
+    width: 60,
+    height: 60,
+    resizeMode: "contain",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 8,
+  },
+  itemDetailTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#3C2332",
+  },
+  itemDetailDescription: {
+    fontSize: 14,
+    color: "#3C2332",
+    marginBottom: 12,
+    fontStyle: "italic",
+  },
+  itemDetailSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#3C2332",
+    marginBottom: 8,
+  },
+  itemDetailTagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  itemDetailTag: {
+    backgroundColor: "#714054",
+    borderRadius: 7,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  itemDetailTagText: {
+    color: "white",
+    fontWeight: "500",
+    fontSize: 13,
+  },
 });
