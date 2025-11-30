@@ -108,6 +108,7 @@ export default function CalendarPage() {
   const [outfitModalMode, setOutfitModalMode] = useState<"day" | "event" | null>(
     null
   );
+  const [isGeneratingOutfit, setIsGeneratingOutfit] = useState(false);
 
   const weekDays = useMemo(() => getWeekDays(selectedDate), [selectedDate]);
 
@@ -333,22 +334,81 @@ export default function CalendarPage() {
     setIsOutfitModalVisible(true);
   };
 
-  const handleGenerateOutfit = () => {
-    if (availableOutfits.length === 0) {
-      Alert.alert("No Items", "You don't have any items in your closet to generate an outfit.");
-      return;
+  const handleGenerateOutfit = async () => {
+    setIsGeneratingOutfit(true);
+
+    // Hard-coded test outfit from another account (user_id: 61fb15c0-d0b1-70ef-94ae-358b706515c2)
+    const testUserId = "61fb15c0-d0b1-70ef-94ae-358b706515c2";
+    const targetItemIds = [
+      // "78cd3d43-694f-4ab8-94b7-9d21710cc7e8", // shirt
+
+      // "4051cbd9-6039-4870-b55a-c488613a58f6", // pants
+      // "0746fca7-ffb3-43a8-b4e3-d6f6e2cd293a",  // shoes
+      "blazer", // shirt
+
+      "shirt", // pants
+      "pants",  // shoes
+      "shoe"
+
+
+    ];
+
+    try {
+      // Use the same API endpoint as HomePage
+      const API_BASE = "https://3a42g82o4d.execute-api.us-east-2.amazonaws.com/dev";
+      const itemsUrl = `${API_BASE}/s3v2?user_id=${encodeURIComponent(testUserId)}&signed=1&expiresIn=3600`;
+
+      const response = await fetch(itemsUrl);
+      const data = await response.json();
+
+      if (data.items && data.items.length > 0) {
+        console.log("API returned items:", data.items);
+
+        // Filter for our specific 3 items
+        const selectedItems: ClosetDataItem[] = [];
+
+        for (const itemId of targetItemIds) {
+          const item = data.items.find((i: any) => {
+            const apiId = (i.id || i.item_id || "").toString().toLowerCase();
+            const targetId = itemId.toLowerCase();
+            return apiId.includes(targetId) || targetId.includes(apiId);
+          });
+
+          if (item && item.uri) {
+            const category =
+              itemId === targetItemIds[0] ? "Tops" :
+              itemId === targetItemIds[1] ? "Pants" : "Shoes";
+
+            console.log(`Found item: ${itemId}, category: ${category}, uri: ${item.uri}`);
+
+            selectedItems.push({
+              id: Date.now() + selectedItems.length,
+              source: { uri: item.uri },
+              type: "user",
+              category
+            });
+          } else {
+            console.log(`Item not found: ${itemId}`);
+          }
+        }
+
+        console.log(`Selected ${selectedItems.length} items`);
+
+        // Wait 1 second before showing the results
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        if (selectedItems.length > 0) {
+          setNewEventOutfit(selectedItems);
+        } else {
+          Alert.alert("Error", "Could not load test outfit images.");
+        }
+      }
+    } catch (error) {
+      console.error("Error loading test outfit:", error);
+      Alert.alert("Error", "Failed to load test outfit.");
+    } finally {
+      setIsGeneratingOutfit(false);
     }
-
-    // Randomly select 3-5 items from available outfits
-    const numItems = Math.min(
-      Math.floor(Math.random() * 3) + 3, // Random number between 3-5
-      availableOutfits.length
-    );
-
-    const shuffled = [...availableOutfits].sort(() => 0.5 - Math.random());
-    const selectedItems = shuffled.slice(0, numItems);
-
-    setNewEventOutfit(selectedItems);
   };
 
   const selectedDayEvents = (events[selectedDate] || []).sort((a, b) =>
@@ -650,7 +710,12 @@ export default function CalendarPage() {
               </TouchableOpacity>
             </View>
             <View style={styles.eventOutfitPreviewContainer}>
-              {newEventOutfit.length > 0 ? (
+              {isGeneratingOutfit ? (
+                <View style={styles.loadingContainer}>
+                  <Ionicons name="sparkles" size={24} color="#714054" />
+                  <Text style={styles.loadingText}>Generating outfit...</Text>
+                </View>
+              ) : newEventOutfit.length > 0 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {newEventOutfit.map((item) => (
                     <Image
@@ -663,16 +728,18 @@ export default function CalendarPage() {
               ) : (
                 <Text style={styles.noOutfitText}>No outfit selected.</Text>
               )}
-              <TouchableOpacity
-                style={styles.addEventOutfitButton}
-                onPress={openOutfitForEvent}
-              >
-                <Ionicons
-                  name={newEventOutfit.length > 0 ? "pencil" : "add"}
-                  size={20}
-                  color="#714054"
-                />
-              </TouchableOpacity>
+              {!isGeneratingOutfit && (
+                <TouchableOpacity
+                  style={styles.addEventOutfitButton}
+                  onPress={openOutfitForEvent}
+                >
+                  <Ionicons
+                    name={newEventOutfit.length > 0 ? "pencil" : "add"}
+                    size={20}
+                    color="#714054"
+                  />
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={styles.modalButtonRow}>
@@ -1201,5 +1268,17 @@ const styles = StyleSheet.create({
     color: "#714054",
     fontSize: 14,
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  loadingText: {
+    color: "#714054",
+    fontSize: 14,
+    fontStyle: "italic",
   },
 });
