@@ -333,6 +333,24 @@ export default function CalendarPage() {
     setIsOutfitModalVisible(true);
   };
 
+  const handleGenerateOutfit = () => {
+    if (availableOutfits.length === 0) {
+      Alert.alert("No Items", "You don't have any items in your closet to generate an outfit.");
+      return;
+    }
+
+    // Randomly select 3-5 items from available outfits
+    const numItems = Math.min(
+      Math.floor(Math.random() * 3) + 3, // Random number between 3-5
+      availableOutfits.length
+    );
+
+    const shuffled = [...availableOutfits].sort(() => 0.5 - Math.random());
+    const selectedItems = shuffled.slice(0, numItems);
+
+    setNewEventOutfit(selectedItems);
+  };
+
   const selectedDayEvents = (events[selectedDate] || []).sort((a, b) =>
     a.startTime.localeCompare(b.startTime)
   );
@@ -621,7 +639,16 @@ export default function CalendarPage() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalSubTitle}>Outfit</Text>
+            <View style={styles.outfitHeaderRow}>
+              <Text style={styles.modalSubTitle}>Outfit</Text>
+              <TouchableOpacity
+                style={styles.generateOutfitButton}
+                onPress={handleGenerateOutfit}
+              >
+                <Ionicons name="sparkles" size={18} color="#714054" />
+                <Text style={styles.generateOutfitText}>Generate Outfit</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.eventOutfitPreviewContainer}>
               {newEventOutfit.length > 0 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -1152,5 +1179,27 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: "#eee",
     borderRadius: 20,
+  },
+  outfitHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 10,
+    marginTop: 10,
+  },
+  generateOutfitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9E3B4",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    gap: 5,
+  },
+  generateOutfitText: {
+    color: "#714054",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

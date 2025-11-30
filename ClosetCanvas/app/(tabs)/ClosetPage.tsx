@@ -2,683 +2,1155 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
-  Modal,
+  TextInput,
   StyleSheet,
   Image,
   TouchableOpacity,
-  Pressable,
   ScrollView,
+  Dimensions,
+  Modal,
+  Pressable,
+  FlatList,
   Alert,
-  ActivityIndicator,
-  ImageSourcePropType,
 } from "react-native";
+// import { SafeAreaView } from "react-native-safe-area-context"; // <-- REMOVED
 import { Ionicons, Entypo } from "@expo/vector-icons";
-import { Link, useFocusEffect } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
-import MasonryList from "@react-native-seoul/masonry-list";
+import { Link } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getCredentials } from "../../util/auth";
-import Constants from "expo-constants";
 
-// ---------------------- Types ----------------------
+const { width } = Dimensions.get("window");
+
+// --- 1. Data Structures ---
+type EventItem = {
+  id: string;
+  title: string;
+  startTime: string; // e.g., "09:00"
+  endTime: string; // e.g., "10:30"
+  color?: string; // Optional color
+  outfit?: ClosetDataItem[]; 
+};
+
+type EventsByDate = {
+  [date: string]: EventItem[];
+};
+
+type OutfitByDate = {
+  [date: string]: ClosetDataItem[];
+};
+
 type ClosetDataItem = {
   id: number;
-  source: ImageSourcePropType;
+  source: any;
   type: "local" | "user";
   category: string;
 };
 
-type Credentials = { uuid?: string; accessToken?: string };
-
-type GetItemsResponse = {
-  user_id: string | null;
-  count: number;
-  items: Array<{
-    id?: string;
-    item_id?: string;
-    uri?: string | null;
-    clothingType?: number | null;
-  }>;
+const getWeekDays = (
+  selected: string
+): { key: string; dayName: string; dayNum: string }[] => {
+  // Placeholder
+  const today = new Date(); 
+  return [
+    { key: "2025-10-26", dayName: "SUN", dayNum: "26" },
+    { key: "2025-10-27", dayName: "MON", dayNum: "27" },
+    { key: "2025-10-28", dayName: "TUE", dayNum: "28" },
+    { key: "2025-10-29", dayName: "WED", dayNum: "29" },
+    { key: "2025-10-30", dayName: "THU", dayNum: "30" },
+    { key: "2025-10-31", dayName: "FRI", dayNum: "31" },
+    { key: "2025-11-01", dayName: "SAT", dayNum: "1" },
+  ];
 };
 
-// ---------------------- Helpers ----------------------
-const uuidToInt = (s: string): number => {
-  if (!s) return Date.now();
-  const hex = s.replace(/-/g, "").slice(0, 8);
-  const n = parseInt(hex || "0", 16);
-  return Number.isNaN(n) ? Date.now() : n;
-};
+const APP_EVENT_COLORS = [
+  "#DE8672",
+  "#F9E3B4",
+  "#714054",
+  "#3C2332",
+  "#FDAF41",
+  "#AB8C96",
+];
 
-const mapClothingTypeToCategory = (t?: number | null): string => {
-  switch (t) {
-    case 1:
-      return "Tops";
-    case 2:
-      return "Pants";
-    case 3:
-      return "Jackets";
-    case 4:
-      return "Dresses";
-    case 5:
-      return "Shoes";
-    default:
-      return "User Upload";
-  }
-};
+function formatTime12(time24: string): { time12: string; ampm: string } {
+  const [hourStr, minuteStr] = time24.split(":");
+  const hour = parseInt(hourStr);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12; // 0 becomes 12
+  return {
+    time12: `${hour12.toString().padStart(2, "0")}:${minuteStr}`,
+    ampm: ampm,
+  };
+}
 
-const CATEGORIES = ["All", "Favorites", "Tops", "Pants", "Dresses", "Shoes", "Jackets"];
+export default function CalendarPage() {
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [events, setEvents] = useState<EventsByDate>({});
+  const [outfits, setOutfits] = useState<OutfitByDate>({});
 
-const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  All: "apps-outline",
-  Favorites: "heart",
-  Tops: "shirt-outline",
-  Pants: "walk-outline",
-  Dresses: "woman-outline",
-  Shoes: "footsteps-outline",
-  Jackets: "snow-outline",
-  "User Upload": "images-outline",
-};
+  const [isEventModalVisible, setIsEventModalVisible] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
-const API_ENDPOINT = "https://3a42g82o4d.execute-api.us-east-2.amazonaws.com/dev/s3v2";
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventStartTime, setNewEventStartTime] = useState("");
+  const [newEventEndTime, setNewEventEndTime] = useState("");
+  const [startAmPm, setStartAmPm] = useState("AM");
+  const [endAmPm, setEndAmPm] = useState("AM");
+  const [newEventOutfit, setNewEventOutfit] = useState<ClosetDataItem[]>([]);
 
-// ---------------------- ClosetCard ----------------------
-const ClosetCard = React.memo(
-  ({
-    item,
-    isLiked,
-    onToggleLike,
-    onDelete,
-  }: {
-    item: ClosetDataItem;
-    isLiked: boolean;
-    onToggleLike: (id: number) => void;
-    onDelete: (id: number) => void;
-  }) => {
-    const [randomHeight] = useState(Math.floor(Math.random() * 100) + 180);
+  const [isOutfitModalVisible, setIsOutfitModalVisible] = useState(false);
+  const [availableOutfits, setAvailableOutfits] = useState<ClosetDataItem[]>(
+    []
+  );
+  const [tempSelectedOutfits, setTempSelectedOutfits] = useState<
+    ClosetDataItem[]
+  >([]);
+  const [outfitModalMode, setOutfitModalMode] = useState<"day" | "event" | null>(
+    null
+  );
 
-    return (
-      <Pressable onLongPress={() => onDelete(item.id)}>
-        <View style={styles.card}>
-          <Image
-            source={item.source}
-            style={[styles.userImage, { height: randomHeight }]}
-          />
-          <TouchableOpacity
-            style={styles.heart}
-            onPress={() => onToggleLike(item.id)}
-          >
-            <Ionicons
-              name={isLiked ? "heart" : "heart-outline"}
-              size={30}
-              color={isLiked ? "#DE8672" : "#333"}
-            />
-          </TouchableOpacity>
-        </View>
-      </Pressable>
-    );
-  }
-);
+  const weekDays = useMemo(() => getWeekDays(selectedDate), [selectedDate]);
 
-// ---------------------- Main ----------------------
-export default function ClosetPage() {
-  const [likedOutfits, setLikedOutfits] = useState<number[]>([]);
-  const [userImages, setUserImages] = useState<ClosetDataItem[]>([]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string>("All");
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [localItems, setLocalItems] = useState<ClosetDataItem[]>([]);
-
-useFocusEffect(
-  useCallback(() => {
+  useEffect(() => {
     loadData();
-    loadUserCredentials();
-  }, [])
-);
+  }, []);
 
-  useEffect(() => {
-    saveData();
-  }, [userImages, likedOutfits, localItems]);
-
-  const loadUserCredentials = async () => {
-    const creds = (await getCredentials()) as Credentials;
-    console.log("[Creds] getCredentials() →", creds);
-    if (creds?.uuid) {
-      setUserId(creds.uuid);
-    } else {
-      console.warn("[Creds] No credentials found. User not logged in.");
-    }
-  };
-
-  // ---------------------- GET ----------------------
-  const refreshFromServer = useCallback(async () => {
-    if (!userId) {
-      console.log("[GET] No userId, skipping refresh");
-      return;
-    }
-    const url = `${API_ENDPOINT}?user_id=${encodeURIComponent(userId)}&signed=1&expiresIn=3600`;
-    console.log("[GET] Fetching from:", url);
-
-    try {
-      const res = await fetch(url);
-      const raw = await res.text();
-      console.log("[GET] Status:", res.status);
-      console.log("[GET] Raw response:", raw.substring(0, 200));
-
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}: ${raw}`);
-      }
-
-      const json: GetItemsResponse = JSON.parse(raw || "{}");
-      const items = json.items || [];
-
-      console.log("[GET] Parsed items count:", items.length);
-
-      const serverItems: ClosetDataItem[] = items
-        .filter((it) => it.uri && typeof it.uri === "string" && it.uri.trim() !== "")
-        .map((it) => ({
-          id: uuidToInt(String(it.id || it.item_id || "")),
-          source: { uri: it.uri! },
-          type: "user" as const,
-          category: mapClothingTypeToCategory(it.clothingType),
-        }));
-
-      console.log("[GET] Valid items:", serverItems.length);
-      setUserImages(serverItems);
-      await AsyncStorage.setItem("userImages", JSON.stringify(serverItems));
-    } catch (e) {
-      console.error("[GET] Error:", e);
-      Alert.alert("Load Failed", "Could not load items from server");
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    if (userId) {
-      console.log("[Effect] userId changed, refreshing:", userId);
-      refreshFromServer();
-    }
-  }, [userId, refreshFromServer]);
-
-  // ---------------------- POST ----------------------
-  // Accepts asset: ImagePickerAsset
-  const uploadImage = async (asset: { uri: string; type?: string; mimeType?: string }) => {
-    if (!userId) {
-      Alert.alert("Error", "You are not logged in.");
-      return;
-    }
-    const bgApi = Constants.expoConfig?.extra?.BG_REMOVAL_API_KEY || "";
-    setIsLoading(true);
-    try {
-      // Use asset.uri for FormData (React Native style)
-      const formData = new FormData();
-      formData.append('image_file', {
-        uri: asset.uri,
-        name: 'upload.jpg',
-        type: asset.mimeType || asset.type || 'image/jpeg',
-      } as any);
-      formData.append('size', 'auto');
-
-      const bgResponse = await fetch("https://api.remove.bg/v1.0/removebg", {
-        method: "POST",
-        headers: {
-          "X-Api-Key": bgApi,
-        },
-        body: formData,
-      });
-
-      if (!bgResponse.ok) {
-        const errorText = await bgResponse.text();
-        throw new Error(`Background removal failed: ${bgResponse.status} - ${errorText}`);
-      }
-
-      // Convert response to base64
-      const arrayBuffer = await bgResponse.arrayBuffer();
-      let binary = "";
-      const bytes = new Uint8Array(arrayBuffer);
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const bgRemovedBase64 = btoa(binary);
-
-      if (!bgRemovedBase64) {
-        throw new Error("No background-removed image returned");
-      }
-
-      // Step 2: Upload to S3
-      const uploadBody = {
-        user_id: userId,
-        image: bgRemovedBase64,
-        filetype: "image/png",
-      };
-
-      const uploadResponse = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(uploadBody),
-      });
-
-      const uploadData = await uploadResponse.json();
-      if (!uploadResponse.ok) {
-        throw new Error(
-          uploadData.message || `Upload failed: ${uploadResponse.status}`
-        );
-      }
-
-      Alert.alert("Success", "Item uploaded successfully!");
-      await refreshFromServer();
-    } catch (e) {
-      Alert.alert(
-        "Upload Failed",
-        e instanceof Error ? e.message : "An error occurred during upload"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // ---------------------- Pickers ----------------------
-  const pickImage = async () => {
-    console.log('[Picker] pickImage called');
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      console.log('[Picker] Media library permission:', permission.status);
-      
-      if (!permission.granted) {
-        Alert.alert("Permission Required", "Please allow access to your photo library.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
-        allowsEditing: false,
-        quality: 0.7,
-        base64: true,
-      });
-      
-      console.log('[Picker] Result canceled:', result.canceled);
-      
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-        console.log('[Picker] Asset:', { 
-          hasBase64: !!asset.base64, 
-          mimeType: asset.mimeType,
-          uri: asset.uri 
-        });
-        
-      await uploadImage(asset);
-      }
-    } catch (e) {
-      console.error('[Picker] Error:', e);
-      Alert.alert('Error', 'Failed to pick image: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  };
-
-  const takePhoto = async () => {
-    console.log('[Camera] takePhoto called');
-    try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      console.log('[Camera] Permission:', permission.status);
-      
-      if (!permission.granted) {
-        Alert.alert("Permission Required", "Please allow access to your camera.");
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 0.7,
-        base64: true,
-      });
-      
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-      await uploadImage(asset);
-      }
-    } catch (e) {
-      console.error('[Camera] Error:', e);
-      Alert.alert('Error', 'Failed to take photo: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  };
-
-  // ---------------------- Local storage ----------------------
   const loadData = async () => {
     try {
-      const storedUserItems = await AsyncStorage.getItem("userImages");
-      const storedLikes = await AsyncStorage.getItem("likedOutfits");
+      const storedEvents = await AsyncStorage.getItem("plannerEvents");
+      const storedOutfits = await AsyncStorage.getItem("plannerOutfits");
+      const storedUserImages = await AsyncStorage.getItem("userImages");
       const storedLocalItems = await AsyncStorage.getItem("localItems");
-      
-      if (storedUserItems) {
-        const parsed = JSON.parse(storedUserItems);
-        console.log("[Storage] Loaded user items:", parsed.length);
-        setUserImages(parsed);
-      }
-      if (storedLikes) setLikedOutfits(JSON.parse(storedLikes));
-      if (storedLocalItems) setLocalItems(JSON.parse(storedLocalItems));
+
+      if (storedEvents) setEvents(JSON.parse(storedEvents));
+      if (storedOutfits) setOutfits(JSON.parse(storedOutfits));
+
+      const userImagesData = storedUserImages
+        ? JSON.parse(storedUserImages)
+        : [];
+      const localItemsData = storedLocalItems
+        ? JSON.parse(storedLocalItems)
+        : [];
+      setAvailableOutfits([...localItemsData, ...userImagesData]);
     } catch (e) {
-      console.error("[Storage] Failed to load data", e);
+      console.error("Failed to load planner data", e);
     }
   };
 
   const saveData = async () => {
     try {
-      await AsyncStorage.setItem("userImages", JSON.stringify(userImages));
-      await AsyncStorage.setItem("likedOutfits", JSON.stringify(likedOutfits));
-      await AsyncStorage.setItem("localItems", JSON.stringify(localItems));
+      await AsyncStorage.setItem("plannerEvents", JSON.stringify(events));
+      await AsyncStorage.setItem("plannerOutfits", JSON.stringify(outfits));
     } catch (e) {
-      console.error("[Storage] Failed to save data", e);
+      console.error("Failed to save planner data", e);
     }
   };
 
-  const toggleLike = useCallback((outfitId: number) => {
-    setLikedOutfits((prev) =>
-      prev.includes(outfitId)
-        ? prev.filter((id) => id !== outfitId)
-        : [...prev, outfitId]
-    );
-  }, []);
+  useEffect(() => {
+    saveData();
+  }, [events, outfits]);
 
-
-  function imageSelecter() {
-    setModalVisible(true);
-  }
-
-  function onTakePhoto() {
-    console.log('onTakePhoto modal action');
-    setModalVisible(false);
-    takePhoto();
-  }
-
-  function onPickImage() {
-    console.log('onPickImage modal action');
-    setModalVisible(false);
-    pickImage();
-  }
-
-  const handleDelete = useCallback((id: number) => {
-    setItemToDelete(id);
-    setDeleteModalVisible(true);
-  }, []);
-
-  const confirmDelete = () => {
-    if (itemToDelete === null) return;
-
-    setUserImages((prev) => prev.filter((item) => item.id !== itemToDelete));
-    setLocalItems((prev) => prev.filter((item) => item.id !== itemToDelete));
-    setLikedOutfits((prev) => prev.filter((likedId) => likedId !== itemToDelete));
-
-    setDeleteModalVisible(false);
-    setItemToDelete(null);
-  };
-
-  const cancelDelete = () => {
-    setDeleteModalVisible(false);
-    setItemToDelete(null);
-  };
-
-  const allData = useMemo(() => [...localItems, ...userImages], [localItems, userImages]);
-
-  const filteredData = useMemo(() => {
-    if (activeCategory === "All") return allData;
-    if (activeCategory === "Favorites") return allData.filter((x) => likedOutfits.includes(x.id));
-    return allData.filter((x) => x.category === activeCategory);
-  }, [allData, activeCategory, likedOutfits]);
-
-  const renderMasonryItem = useCallback(
-    ({ item, i }: { item: unknown; i: number }) => {
-      const it = item as ClosetDataItem;
-      const isLiked = likedOutfits.includes(it.id);
-      
-      return (
-        <ClosetCard
-          item={it}
-          isLiked={isLiked}
-          onToggleLike={toggleLike}
-          onDelete={handleDelete}
-        />
+  const handleDeleteEvent = useCallback(
+    (eventId: string) => {
+      Alert.alert(
+        "Delete Event",
+        "Are you sure you want to permanently delete this event?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              const updatedDayEvents = (events[selectedDate] || []).filter(
+                (e) => e.id !== eventId
+              );
+              setEvents((prev) => ({
+                ...prev,
+                [selectedDate]: updatedDayEvents,
+              }));
+            },
+          },
+        ]
       );
     },
-    [likedOutfits, toggleLike, handleDelete]
+    [events, selectedDate]
   );
 
-  return (
-    <View style={styles.container}>
-      <Link href="/SettingsPage" style={styles.userIcon}>
-        <Entypo name="user" size={28} color="white" />
-      </Link>
+  const handleSaveEvent = () => {
+    const timeRegex = /^(0[1-9]|1[0-2]):([0-5]\d)$/;
+    if (
+      !newEventTitle ||
+      !newEventStartTime ||
+      !newEventEndTime ||
+      !timeRegex.test(newEventStartTime) ||
+      !timeRegex.test(newEventEndTime)
+    ) {
+      Alert.alert(
+        "Invalid Input",
+        "Please enter a title, and start/end times in HH:MM format (e.g., 09:30)."
+      );
+      return;
+    }
 
-      <View style={styles.subtitleRow}>
-        <Ionicons
-          name={
-            activeCategory === "Favorites" ? "heart" :
-            activeCategory === "Tops" ? "shirt" :
-            activeCategory === "Pants" ? "man" :
-            activeCategory === "Dresses" ? "woman" :
-            activeCategory === "Shoes" ? "walk" :
-            activeCategory === "Jackets" ? "snow" :
-            "grid-outline"
+    const convertTo24Hour = (time: string, ampm: string): string => {
+      const [hour, minute] = time.split(":");
+      let hourInt = parseInt(hour);
+      if (ampm === "PM" && hourInt !== 12) {
+        hourInt += 12;
+      }
+      if (ampm === "AM" && hourInt === 12) {
+        hourInt = 0;
+      }
+      return `${hourInt.toString().padStart(2, "0")}:${minute}`;
+    };
+
+    const startTime24 = convertTo24Hour(newEventStartTime, startAmPm);
+    const endTime24 = convertTo24Hour(newEventEndTime, endAmPm);
+
+    const startMinutes =
+      parseInt(startTime24.split(":")[0]) * 60 +
+      parseInt(startTime24.split(":")[1]);
+    const endMinutes =
+      parseInt(endTime24.split(":")[0]) * 60 +
+      parseInt(endTime24.split(":")[1]);
+    if (startMinutes >= endMinutes) {
+      Alert.alert("Invalid Time", "End time must be after start time.");
+      return;
+    }
+
+    if (editingEventId) {
+      setEvents((prev) => {
+        const dayEvents = prev[selectedDate] || [];
+        const updatedEvents = dayEvents.map((event) => {
+          if (event.id === editingEventId) {
+            return {
+              ...event, 
+              title: newEventTitle,
+              startTime: startTime24,
+              endTime: endTime24,
+              outfit: newEventOutfit,
+            };
           }
-          size={40}
-          color="#714054"
-          style={{ marginRight: 10, marginTop: 40, marginLeft: 20 }}
-        />
-        <Text style={styles.subtitle}>
-          {activeCategory === "All" ? "Wardrobe" : activeCategory}
-        </Text>
-      </View>
+          return event; 
+        });
+        return { ...prev, [selectedDate]: updatedEvents };
+      });
+    } else {
+      const newEvent: EventItem = {
+        id: Date.now().toString(),
+        title: newEventTitle,
+        startTime: startTime24,
+        endTime: endTime24,
+        color:
+          APP_EVENT_COLORS[Math.floor(Math.random() * APP_EVENT_COLORS.length)],
+        outfit: newEventOutfit,
+      };
+      setEvents((prev) => ({
+        ...prev,
+        [selectedDate]: [...(prev[selectedDate] || []), newEvent],
+      }));
+    }
 
-      <View style={styles.categoryBar}>
+    closeEventModal();
+  };
+
+  const openAddEventModal = () => {
+    setEditingEventId(null);
+    setNewEventTitle("");
+    setNewEventStartTime("");
+    setNewEventEndTime("");
+    setStartAmPm("AM");
+    setEndAmPm("AM");
+    setNewEventOutfit([]);
+    setIsEventModalVisible(true);
+  };
+
+  const openEditEventModal = (event: EventItem) => {
+    setEditingEventId(event.id);
+    setNewEventTitle(event.title);
+    setNewEventOutfit(event.outfit || []);
+
+    const start = formatTime12(event.startTime);
+    const end = formatTime12(event.endTime);
+
+    setNewEventStartTime(start.time12);
+    setStartAmPm(start.ampm);
+    setNewEventEndTime(end.time12);
+    setEndAmPm(end.ampm);
+
+    setIsEventModalVisible(true);
+  };
+
+  const closeEventModal = () => {
+    setIsEventModalVisible(false);
+    setEditingEventId(null);
+    setNewEventTitle("");
+    setNewEventStartTime("");
+    setNewEventEndTime("");
+    setStartAmPm("AM");
+    setEndAmPm("AM");
+    setNewEventOutfit([]);
+  };
+
+  const handleAddOutfit = () => {
+    const currentOutfit = outfits[selectedDate] || [];
+    setTempSelectedOutfits(currentOutfit);
+    setOutfitModalMode("day");
+    setIsOutfitModalVisible(true);
+  };
+
+  const toggleOutfitItem = (item: ClosetDataItem) => {
+    setTempSelectedOutfits((prev) => {
+      const isSelected = prev.some(
+        (selectedItem) => selectedItem.id === item.id
+      );
+      if (isSelected) {
+        return prev.filter((selectedItem) => selectedItem.id !== item.id);
+      } else {
+        return [...prev, item];
+      }
+    });
+  };
+
+  const confirmOutfitSelection = () => {
+    if (outfitModalMode === "day") {
+      setOutfits((prev) => ({ ...prev, [selectedDate]: tempSelectedOutfits }));
+    } else if (outfitModalMode === "event") {
+      setNewEventOutfit(tempSelectedOutfits);
+    }
+    setIsOutfitModalVisible(false);
+    setOutfitModalMode(null);
+    setTempSelectedOutfits([]);
+  };
+
+  const handleRemoveOutfit = () => {
+    setOutfits((prev) => ({ ...prev, [selectedDate]: [] }));
+  };
+
+  const openOutfitForEvent = () => {
+    setTempSelectedOutfits(newEventOutfit);
+    setOutfitModalMode("event");
+    setIsOutfitModalVisible(true);
+  };
+
+  const selectedDayEvents = (events[selectedDate] || []).sort((a, b) =>
+    a.startTime.localeCompare(b.startTime)
+  );
+  const selectedDayOutfit = outfits[selectedDate] || [];
+
+  return (
+    <View style={styles.flexContainer}>
+      <View style={styles.calendarContainer}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryContainer}
+          contentContainerStyle={styles.weekScroll}
         >
-          {CATEGORIES.map((category) => (
+          {weekDays.map((day) => (
             <TouchableOpacity
-              key={category}
-              style={[
-                styles.categoryButton,
-                activeCategory === category && styles.categoryButtonActive,
-              ]}
-              onPress={() => setActiveCategory(category)}
-              activeOpacity={0.8}
+              key={day.key}
+              style={styles.dayContainer}
+              onPress={() => setSelectedDate(day.key)}
             >
               <Text
                 style={[
-                  styles.categoryText,
-                  activeCategory === category && styles.categoryTextActive,
+                  styles.dayName,
+                  selectedDate === day.key && styles.selectedTextPurple,
                 ]}
               >
-                {category}
+                {day.dayName}
               </Text>
+              <View
+                style={[
+                  styles.dayNumberCircle,
+                  selectedDate === day.key && styles.selectedDayNumberCircle,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    selectedDate === day.key && styles.selectedTextWhite,
+                  ]}
+                >
+                  {day.dayNum}
+                </Text>
+              </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      <MasonryList
-        data={filteredData}
-        keyExtractor={(item: unknown) => (item as ClosetDataItem).id.toString()}
-        numColumns={2}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 100 }}
-        renderItem={renderMasonryItem}
-      />
-
-      <TouchableOpacity style={styles.addButton} onPress={imageSelecter}>
-        <Ionicons name="add" size={30} color="#714054" />
-      </TouchableOpacity>
-
-      {/* Add Image Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <Pressable style={styles.modalContainer} onPress={() => setModalVisible(false)}>
-          <Pressable style={styles.modalView}>
-            <Text style={styles.modalTitle}>Add to Closet</Text>
-
-            <TouchableOpacity style={styles.modalButton} onPress={takePhoto}>
-              <Ionicons name="camera" size={22} color="#714054" />
-              <Text style={styles.modalButtonText}>Take Photo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.modalButton} onPress={pickImage}>
-              <Ionicons name="image" size={22} color="#714054" />
-              <Text style={styles.modalButtonText}>Choose from Library</Text>
-            </TouchableOpacity>
-
+     <ScrollView
+      style={styles.contentArea}
+      contentContainerStyle={{
+        paddingHorizontal: 15, 
+        paddingTop: 15,        
+        paddingBottom: 100,    
+      }}
+    >
+      <Text style={styles.sectionTitle}>Outfit for {selectedDate}</Text>
+        <View style={styles.outfitSection}>
+          {selectedDayOutfit.length > 0 ? (
+            <View style={styles.outfitDisplayContainer}>
+              <View style={styles.outfitDisplay}>
+                {selectedDayOutfit.map((item) => (
+                  <Image
+                    key={item.id}
+                    source={item.source}
+                    style={styles.outfitImage}
+                  />
+                ))}
+              </View>
+              <TouchableOpacity
+                onPress={handleRemoveOutfit}
+                style={styles.removeOutfitButton}
+              >
+                <Ionicons name="close-circle" size={24} color="#D32F2F" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleAddOutfit} 
+                style={styles.editOutfitButton}
+              >
+                <Entypo name="edit" size={20} color="#4B0082" />
+              </TouchableOpacity>
+            </View>
+          ) : (
             <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
-              onPress={() => setModalVisible(false)}
+              style={styles.addOutfitButton}
+              onPress={handleAddOutfit} 
             >
-              <Text style={[styles.modalButtonText, styles.cancelButtonText]}>Cancel</Text>
+              <Ionicons name="add-circle-outline" size={30} color="#4B0082" />
+              <Text style={styles.addOutfitText}>Add Outfit</Text>
             </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          )}
+        </View>
 
-      {/* Delete Confirmation Modal */}
-      <Modal visible={deleteModalVisible} transparent animationType="fade">
-        <Pressable style={styles.modalContainer} onPress={cancelDelete}>
-          <Pressable style={styles.modalView}>
-            <Text style={styles.modalTitle}>Delete Item</Text>
-            <Text style={styles.deleteModalText}>
-              Are you sure you want to delete this item?
+        <View style={styles.eventsHeader}>
+          <Text style={styles.sectionTitle}>Events for {selectedDate}</Text>
+        </View>
+
+        <View style={styles.timeGridContainer}>
+          <View style={styles.timeLabelsColumn}>
+            {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+              <View key={`label-${hour}`} style={styles.timeLabelCell}>
+                <Text style={styles.timeLabelText}>
+                  {hour === 0
+                    ? "12 AM"
+                    : hour === 12
+                    ? "12 PM"
+                    : hour > 12
+                    ? `${hour - 12} PM`
+                    : `${hour} AM`}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.eventsColumn}>
+            {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+              <View key={`line-${hour}`} style={styles.gridLine} />
+            ))}
+
+            {(() => {
+              const eventBlocks = [];
+              let currentOverlapLevel = 0;
+              let maxEndTimeInGroup = -1; 
+
+              for (const event of selectedDayEvents) {
+                const timeRegex = /^\d{2}:\d{2}$/;
+                if (
+                  !event.startTime ||
+                  !event.endTime ||
+                  !timeRegex.test(event.startTime) ||
+                  !timeRegex.test(event.endTime)
+                ) {
+                  continue;
+                }
+                const hourHeight = 60;
+                const startHour = parseInt(event.startTime.split(":")[0]);
+                const startMinute = parseInt(event.startTime.split(":")[1]);
+                const endHour = parseInt(event.endTime.split(":")[0]);
+                const endMinute = parseInt(event.endTime.split(":")[1]);
+                if (
+                  isNaN(startHour) ||
+                  isNaN(startMinute) ||
+                  isNaN(endHour) ||
+                  isNaN(endMinute)
+                )
+                  continue;
+                const startMinutes = startHour * 60 + startMinute;
+                const endMinutes = endHour * 60 + endMinute;
+                const durationMinutes = Math.max(15, endMinutes - startMinutes);
+                const gridStartHour = 0;
+                const gridStartMinutes = gridStartHour * 60;
+                const topPosition =
+                  ((startMinutes - gridStartMinutes) / 60) * hourHeight;
+                const eventHeight = (durationMinutes / 60) * hourHeight;
+                const totalGridHeight = hourHeight * 24;
+                if (
+                  endMinutes <= gridStartMinutes ||
+                  startMinutes >= (gridStartHour + 24) * 60 ||
+                  eventHeight <= 0
+                ) {
+                  continue;
+                }
+                const clampedTop = Math.max(0, topPosition);
+                const adjustedHeight = Math.min(
+                  eventHeight - (clampedTop - topPosition),
+                  totalGridHeight - clampedTop
+                );
+                if (startMinutes >= maxEndTimeInGroup) {
+                  currentOverlapLevel = 0;
+                } else {
+                  currentOverlapLevel++;
+                }
+                maxEndTimeInGroup = Math.max(maxEndTimeInGroup, endMinutes);
+                const overlapOffset = (currentOverlapLevel % 4) * 10;
+                const zIndex = currentOverlapLevel;
+
+                eventBlocks.push(
+                  <Pressable
+                    key={event.id}
+                    onLongPress={() => handleDeleteEvent(event.id)}
+                    onPress={() => openEditEventModal(event)} 
+                    style={[
+                      styles.eventBlock,
+                      {
+                        top: clampedTop,
+                        height: adjustedHeight,
+                        backgroundColor: event.color || "#4A90E2",
+                        borderLeftColor: event.color
+                          ? darkenColor(event.color, 20)
+                          : "#357ABD",
+                        left: 4 + overlapOffset,
+                        right: 10,
+                        zIndex: zIndex,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.eventBlockTitle} numberOfLines={1}>
+                      {event.title}
+                    </Text>
+                    <Text style={styles.eventBlockTime} numberOfLines={1}>
+                      {formatTime(event.startTime)} -{" "}
+                      {formatTime(event.endTime)}
+                    </Text>
+                    {event.outfit && event.outfit.length > 0 && (
+                      <Ionicons
+                        name="shirt"
+                        size={12}
+                        color="white"
+                        style={styles.eventOutfitIcon}
+                      />
+                    )}
+                  </Pressable>
+                );
+              }
+              return eventBlocks;
+            })()}
+          </View>
+        </View>
+
+        {selectedDayEvents.length === 0 && (
+          <Text style={styles.noEventsText}>
+            No events scheduled for this day.
+          </Text>
+        )}
+      </ScrollView>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isEventModalVisible}
+        onRequestClose={closeEventModal} 
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={closeEventModal} 
+        >
+          <Pressable style={styles.modalView} onPress={() => {}}>
+            <Text style={styles.modalTitle}>
+              {editingEventId ? "Edit Event" : "Add New Event"}
             </Text>
 
-            <View style={styles.deleteModalButtonRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="Event Title"
+              placeholderTextColor="#aaa"
+              value={newEventTitle}
+              onChangeText={setNewEventTitle}
+            />
+
+            <View style={styles.timeInputContainer}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="Start Time (HH:MM)"
+                placeholderTextColor="#aaa"
+                value={newEventStartTime}
+                onChangeText={setNewEventStartTime}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+              />
               <TouchableOpacity
-                style={[styles.deleteButton, styles.deleteButtonCancel]}
-                onPress={cancelDelete}
+                style={styles.amPmToggle}
+                onPress={() =>
+                  setStartAmPm((prev) => (prev === "AM" ? "PM" : "AM"))
+                }
               >
-                <Text style={[styles.deleteButtonText, styles.deleteButtonTextCancel]}>
+                <Text style={styles.amPmText}>{startAmPm}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.timeInputContainer}>
+              <TextInput
+                style={[styles.input, styles.timeInput]}
+                placeholder="End Time (HH:MM)"
+                placeholderTextColor="#aaa"
+                value={newEventEndTime}
+                onChangeText={setNewEventEndTime}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+              />
+              <TouchableOpacity
+                style={styles.amPmToggle}
+                onPress={() =>
+                  setEndAmPm((prev) => (prev === "AM" ? "PM" : "AM"))
+                }
+              >
+                <Text style={styles.amPmText}>{endAmPm}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubTitle}>Outfit</Text>
+            <View style={styles.eventOutfitPreviewContainer}>
+              {newEventOutfit.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {newEventOutfit.map((item) => (
+                    <Image
+                      key={item.id}
+                      source={item.source}
+                      style={styles.eventOutfitPreviewImage}
+                    />
+                  ))}
+                </ScrollView>
+              ) : (
+                <Text style={styles.noOutfitText}>No outfit selected.</Text>
+              )}
+              <TouchableOpacity
+                style={styles.addEventOutfitButton}
+                onPress={openOutfitForEvent}
+              >
+                <Ionicons
+                  name={newEventOutfit.length > 0 ? "pencil" : "add"}
+                  size={20}
+                  color="#714054"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButtonBase, styles.modalButtonCancel]}
+                onPress={closeEventModal} 
+              >
+                <Text
+                  style={[styles.modalButtonText, styles.modalButtonTextCancel]}
+                >
                   Cancel
                 </Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={[styles.deleteButton, styles.deleteButtonConfirm]}
-                onPress={confirmDelete}
+                style={[styles.modalButtonBase, styles.modalButtonConfirm]}
+                onPress={handleSaveEvent}
               >
-                <Text style={styles.deleteButtonText}>Delete</Text>
+                <Text style={styles.modalButtonText}>
+                  {editingEventId ? "Save Changes" : "Add Event"}
+                </Text>
               </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Loading Modal */}
-      <Modal transparent visible={isLoading}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#714054" />
-          <Text style={styles.loadingText}>Processing image...</Text>
-        </View>
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isOutfitModalVisible}
+        onRequestClose={() => setIsOutfitModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setIsOutfitModalVisible(false)}
+        >
+          <Pressable
+            style={[styles.modalView, styles.outfitModalView]}
+            onPress={() => {}}
+          >
+            <Text style={styles.modalTitle}>
+              Select Outfit{" "}
+              {outfitModalMode === "day" && `for ${selectedDate}`}
+              {outfitModalMode === "event" && `for Event`}
+            </Text>
+            {availableOutfits.length === 0 ? (
+              <Text style={styles.noEventsText}>
+                No outfits found in your closet.
+              </Text>
+            ) : (
+              <FlatList
+                data={availableOutfits}
+                keyExtractor={(item) => item.id.toString()}
+                numColumns={3}
+                renderItem={({ item }) => {
+                  const isSelected = tempSelectedOutfits.some(
+                    (selected) => selected.id === item.id
+                  );
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.outfitSelectItem,
+                        isSelected && styles.outfitSelectItem_Selected,
+                      ]}
+                      onPress={() => toggleOutfitItem(item)}
+                    >
+                      <Image
+                        source={item.source}
+                        style={styles.outfitSelectImage}
+                      />
+                      {isSelected && (
+                        <View style={styles.selectedCheckmark}>
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color="#714054"
+                          />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+                contentContainerStyle={styles.outfitListContainer}
+              />
+            )}
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButtonBase, styles.modalButtonCancel]}
+                onPress={() => setIsOutfitModalVisible(false)}
+              >
+                <Text
+                  style={[styles.modalButtonText, styles.modalButtonTextCancel]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButtonBase, styles.modalButtonConfirm]}
+                onPress={confirmOutfitSelection}
+              >
+                <Text style={styles.modalButtonText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
+
+      <TouchableOpacity
+        style={styles.floatingAddButton}
+        onPress={openAddEventModal} 
+      >
+        <Ionicons name="add" size={32} color="white" />
+      </TouchableOpacity>
     </View>
   );
 }
 
-// ---------------------- Styles ----------------------
+function darkenColor(hex: string, percent: number): string {
+  hex = hex.replace(/^\s*#|\s*$/g, "");
+  if (hex.length === 3) {
+    hex = hex.replace(/(.)/g, "$1$1");
+  }
+  let r = parseInt(hex.substring(0, 2), 16),
+    g = parseInt(hex.substring(2, 4), 16),
+    b = parseInt(hex.substring(4, 6), 16);
+  const factor = (100 - percent) / 100;
+  r = Math.min(255, Math.max(0, Math.round(r * factor)));
+  g = Math.min(255, Math.max(0, Math.round(g * factor)));
+  b = Math.min(255, Math.max(0, Math.round(b * factor)));
+  return `#${r.toString(16).padStart(2, "0")}${g
+    .toString(16)
+    .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+function formatTime(time24: string): string {
+  const [hourStr, minuteStr] = time24.split(":");
+  const hour = parseInt(hourStr);
+  const minute = parseInt(minuteStr);
+  if (isNaN(hour) || isNaN(minute)) return time24;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minuteStr} ${ampm}`;
+}
+
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#E5D7D7" },
-  subtitle: { fontSize: 25, marginTop: 42, color: "#2E2E2E", fontWeight: "bold", margin: 5 },
-  subtitleRow: { flexDirection: "row", alignItems: "center", marginLeft: 5, marginBottom: 5 },
-  categoryBar: { height: 56, marginBottom: 10 },
-  categoryContainer: { paddingHorizontal: 15, alignItems: "center" },
-  categoryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: "#714054",
-    borderRadius: 20,
-    marginRight: 10,
-    alignSelf: "center",
+  flexContainer: {
+    flex: 1,
+    backgroundColor: "#E5D7D7",
   },
-  categoryButtonActive: { backgroundColor: "#DE8672" },
-  categoryText: { color: "#FAFAFA", fontWeight: "600" },
-  categoryTextActive: { color: "#FFF", fontWeight: "600" },
-  card: { backgroundColor: "#714054", borderRadius: 16, margin: 5, overflow: "hidden", elevation: 3 },
-  userImage: { width: "100%", resizeMode: "contain", borderRadius: 12 },
-  heart: { position: "absolute", top: 8, right: 8 },
-  addButton: { 
-    position: "absolute", 
-    bottom: 20, 
-    right: 20, 
-    backgroundColor: "#fff", 
-    borderRadius: 50, 
-    padding: 10,
+  eventsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  calendarContainer: {
+    backgroundColor: "#714054",
+    paddingHorizontal: 10,
+    paddingTop: 50,
+    paddingBottom: 15,
+  },
+  weekScroll: {
+    alignItems: "center",
+    paddingVertical: 5,
+  },
+  dayContainer: {
+    alignItems: "center",
+    marginHorizontal: 10,
+    paddingVertical: 5,
+  },
+  dayName: {
+    fontSize: 12,
+    color: "#E0D0F8",
+    marginBottom: 8,
+  },
+  dayNumberCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "transparent",
+  },
+  selectedDayNumberCircle: {
+    backgroundColor: "white",
+  },
+  dayNumber: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "white",
+  },
+  selectedTextPurple: {
+    color: "white",
+    fontWeight: "bold",
+  },
+  selectedTextWhite: {
+    color: "#714054",
+  },
+  contentArea: {
+    flex: 1,
+    backgroundColor: "#E5D7D7",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#3C2332",
+    marginBottom: 15,
+  },
+  outfitSection: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+    alignItems: "center",
+    minHeight: 100,
+    justifyContent: "center",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  addOutfitButton: {
+    alignItems: "center",
+  },
+  addOutfitText: {
+    marginTop: 5,
+    color: "#4B0082",
+    fontSize: 14,
+  },
+  outfitDisplayContainer: {
+    position: "relative",
+    width: "100%",
+    alignItems: "center",
+  },
+  outfitDisplay: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  outfitImage: {
+    width: 60,
+    height: 60,
+    resizeMode: "contain",
+    borderRadius: 8,
+    margin: 4,
+    backgroundColor: "#f0f0f0",
+  },
+  removeOutfitButton: {
+    position: "absolute",
+    top: -12,
+    right: -5,
+    backgroundColor: "white",
+    borderRadius: 15,
+    zIndex: 10,
+  },
+  editOutfitButton: {
+    position: "absolute",
+    top: -10,
+    left: -5,
+    backgroundColor: "white",
+    borderRadius: 15,
+    zIndex: 10,
+    padding: 2,
+  },
+  floatingAddButton: {
+    position: "absolute",
+    width: 50,
+    height: 50,
+    borderRadius: 30,
+    backgroundColor: "#714054",
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    bottom: 30, 
+    right: 30, 
+    zIndex: 10, 
+  },
+  noEventsText: {
+    textAlign: "center",
+    color: "#888",
+    marginTop: 40,
+    fontSize: 15,
+  },
+  timeGridContainer: {
+    flexDirection: "row",
+    marginTop: 10,
+    backgroundColor: "white",
+    borderRadius: 8,
+    paddingTop: 10,
+    paddingBottom: 10,
+    minHeight: 60 * 24,
+  },
+  timeLabelsColumn: {
+    width: 60,
+    paddingRight: 10,
+  },
+  timeLabelCell: {
+    height: 60,
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 5,
+  },
+  timeLabelText: {
+    fontSize: 12,
+    color: "#666",
+  },
+  eventsColumn: {
+    flex: 1,
+    position: "relative",
+    borderLeftWidth: 1,
+    borderLeftColor: "#eee",
+  },
+  gridLine: {
+    height: 60,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  eventBlock: {
+    position: "absolute",
+    backgroundColor: "#4A90E2", 
+    borderRadius: 4,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    overflow: "hidden",
+    borderLeftWidth: 3,
+    elevation: 1, 
+  },
+  eventBlockTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "white",
+    marginBottom: 1,
+  },
+  eventBlockTime: {
+    fontSize: 10,
+    color: "rgba(255, 255, 255, 0.85)",
+  },
+  eventOutfitIcon: {
+    position: "absolute",
+    bottom: 3,
+    right: 5,
+    opacity: 0.8,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  modalView: {
+    width: "90%",
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 25,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
     elevation: 5,
   },
-  modalContainer: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
-  modalView: { 
-    backgroundColor: "white", 
-    borderTopLeftRadius: 20, 
-    borderTopRightRadius: 20, 
-    paddingVertical: 20, 
-    paddingHorizontal: 20,
-    alignItems: "center" 
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 20,
+    color: "#333",
   },
-  modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 20 },
-  modalButton: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    padding: 12, 
-    justifyContent: "center", 
-    width: "100%" 
-  },
-  modalButtonText: { color: "#2E2E2E", fontSize: 16, fontWeight: "600", marginLeft: 10 },
-  cancelButton: {
-    backgroundColor: "#E5D7D7",
-    borderRadius: 10,
-    marginTop: 10,
-    width: "60%",
-  },
-  cancelButtonText: { color: "#2E2E2E", fontWeight: "600", fontSize: 16 },
-  deleteModalText: {
+  input: {
+    width: "100%",
+    height: 45,
+    borderColor: "#ddd",
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 15,
+    paddingHorizontal: 15,
     fontSize: 16,
-    color: "#666",
-    marginBottom: 24,
-    textAlign: "center",
   },
-  deleteModalButtonRow: {
+  timeInputContainer: {
+    flexDirection: "row",
+    width: "100%",
+    alignItems: "center",
+  },
+  timeInput: {
+    flex: 1,
+    marginRight: 10,
+  },
+  amPmToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#eee",
+    borderRadius: 8,
+    height: 45,
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+  amPmText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#714054",
+  },
+  modalButtonRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     width: "100%",
-    gap: 12,
-  },
-  deleteButton: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteButtonCancel: { backgroundColor: "#E5D7D7" },
-  deleteButtonConfirm: { backgroundColor: "#D90429" },
-  deleteButtonText: { color: "white", fontSize: 16, fontWeight: "bold" },
-  deleteButtonTextCancel: { color: "#3C2332" },
-  userIcon: {
-    position: "absolute",
-    top: 40,
-    right: 20,
-    zIndex: 10,
-    backgroundColor: "#714054",
-    borderRadius: 22,
-    width: 44,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-  },
-  loadingText: {
-    color: "white",
     marginTop: 10,
+  },
+  modalButtonBase: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    marginHorizontal: 5,
+    alignItems: "center",
+  },
+  modalButtonCancel: {
+    backgroundColor: "#eee",
+  },
+  modalButtonConfirm: {
+    backgroundColor: "#714054",
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "white",
+  },
+  modalButtonTextCancel: {
+    color: "#555",
+  },
+  outfitModalView: {
+    height: "80%",
+  },
+  outfitListContainer: {
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  outfitSelectItem: {
+    width: (width * 0.9 - 50) / 3,
+    aspectRatio: 1,
+    padding: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "transparent",
+    borderRadius: 10,
+  },
+  outfitSelectItem_Selected: {
+    borderColor: "#714054",
+  },
+  outfitSelectImage: {
+    width: "90%",
+    height: "90%",
+    resizeMode: "contain",
+    borderRadius: 8,
+    backgroundColor: "#f0f0f0",
+  },
+  selectedCheckmark: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    backgroundColor: "white",
+    borderRadius: 12,
+  },
+  modalSubTitle: {
     fontSize: 16,
     fontWeight: "600",
+    color: "#444",
+    alignSelf: "flex-start",
+    marginBottom: 10,
+    marginTop: 10,
+
+  },
+  eventOutfitPreviewContainer: {
+    width: "100%",
+    height: 70,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    borderColor: "#eee",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    marginBottom: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  eventOutfitPreviewImage: {
+    width: 50,
+    height: 50,
+    resizeMode: "contain",
+    borderRadius: 6,
+    marginRight: 8,
+    backgroundColor: "#f0f0f0",
+  },
+  noOutfitText: {
+    flex: 1,
+    fontStyle: "italic",
+    color: "#888",
+  },
+  addEventOutfitButton: {
+    padding: 10,
+    backgroundColor: "#eee",
+    borderRadius: 20,
   },
 });
