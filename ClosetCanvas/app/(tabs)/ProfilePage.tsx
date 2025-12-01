@@ -89,8 +89,8 @@ export default function SettingsPage() {
         <View style={styles.profileAvatar}>
           <User size={40} color="white" />
         </View>
-        <Text style={styles.profileName}>Your Username</Text>
-        <Text style={styles.profileEmail}>your.email@example.com</Text>
+        <Text style={styles.profileName}>Flamingo Hat-Luvrs</Text>
+        <Text style={styles.profileEmail}>closetcanvasdemo@gmail.com</Text>
 
         <TouchableOpacity
           style={styles.editProfileButton}

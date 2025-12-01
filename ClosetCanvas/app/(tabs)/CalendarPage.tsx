@@ -51,13 +51,13 @@ const getWeekDays = (
   // Placeholder
   const today = new Date(); 
   return [
-    { key: "2025-10-26", dayName: "SUN", dayNum: "26" },
-    { key: "2025-10-27", dayName: "MON", dayNum: "27" },
-    { key: "2025-10-28", dayName: "TUE", dayNum: "28" },
-    { key: "2025-10-29", dayName: "WED", dayNum: "29" },
-    { key: "2025-10-30", dayName: "THU", dayNum: "30" },
-    { key: "2025-10-31", dayName: "FRI", dayNum: "31" },
-    { key: "2025-11-01", dayName: "SAT", dayNum: "1" },
+    { key: "2025-12-03", dayName: "WED", dayNum: "3" },
+    { key: "2025-12-04", dayName: "THU", dayNum: "4" },
+    { key: "2025-12-05", dayName: "FRI", dayNum: "5" },
+    { key: "2025-12-06", dayName: "SAT", dayNum: "6" },
+    { key: "2025-12-07", dayName: "SUN", dayNum: "7" },
+    { key: "2025-12-08", dayName: "MON", dayNum: "8" },
+    { key: "2025-12-09", dayName: "TUE", dayNum: "9" },
   ];
 };
 
