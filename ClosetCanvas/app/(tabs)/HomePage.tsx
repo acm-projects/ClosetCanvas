@@ -115,14 +115,14 @@ const mapClothingTypeToCategory = (t?: number | null): string => {
 const getItemDetails = (category: string) => {
   const details: Record<string, { description: string; goodFor: string[]; event: string[] }> = {
     Tops: {
-      description: "A versatile top perfect for various occasions.",
-      goodFor: ["Sunny", "Warm", "Layering"],
-      event: ["Casual", "Work", "Brunch"],
+         description: "A classic navy sweater that offers warmth and polished style for cooler days.",
+  goodFor: ["Cold", "Chilly", "Layering"],
+  event: ["Casual", "Work", "Brunch", "Dinner"],
     },
     Pants: {
-      description: "Comfortable and stylish pants.",
-      goodFor: ["Any Weather"],
-      event: ["Casual", "Everyday"],
+       description: "Crisp wide-leg white pants that add a clean, elevated look to any outfit.",
+  goodFor: ["Mild", "Warm"],
+  event: ["Casual", "Work", "Brunch", "Going Out"],
     },
     Shoes: {
       description: "Comfortable footwear for daily activities.",
@@ -174,8 +174,8 @@ export default function HomePage() {
   });
 
   const cardOpacity = pan.x.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
-    outputRange: [0.5, 1, 0.5],
+    inputRange: [-width * 2, -width, -SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD, width, width * 2],
+    outputRange: [0.5, 0.9, 0.95, 1, 0.95, 0.9, 0.5],
   });
 
   const frontRotateY = flipAnim.interpolate({

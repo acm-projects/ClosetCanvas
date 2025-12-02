@@ -82,6 +82,16 @@ function formatTime12(time24: string): { time12: string; ampm: string } {
 }
 
 export default function CalendarPage() {
+    // --- Time Range Selection State ---
+    const [pendingTimeSelection, setPendingTimeSelection] = useState<{start: number, end: number} | null>(null);
+    const [selectedStartHour, setSelectedStartHour] = useState<number | null>(null);
+    const [selectedEndHour, setSelectedEndHour] = useState<number | null>(null);
+
+    // Helper to reset selection
+    const resetTimeSelection = () => {
+      setSelectedStartHour(null);
+      setSelectedEndHour(null);
+    };
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -256,14 +266,25 @@ export default function CalendarPage() {
   };
 
   const openAddEventModal = () => {
-    setEditingEventId(null);
-    setNewEventTitle("");
-    setNewEventStartTime("");
-    setNewEventEndTime("");
-    setStartAmPm("AM");
-    setEndAmPm("AM");
-    setNewEventOutfit([]);
-    setIsEventModalVisible(true);
+    // Accept optional time range for pre-fill
+    return function(timeRange?: { startHour: number; endHour: number }) {
+      setEditingEventId(null);
+      setNewEventTitle("");
+      setNewEventOutfit([]);
+      if (timeRange) {
+        const { startHour, endHour } = timeRange;
+        setNewEventStartTime((startHour === 0 ? "12" : startHour > 12 ? `${startHour - 12}` : `${startHour}`).padStart(2, "0") + ":00");
+        setStartAmPm(startHour >= 12 ? "PM" : "AM");
+        setNewEventEndTime((endHour === 0 ? "12" : endHour > 12 ? `${endHour - 12}` : `${endHour}`).padStart(2, "0") + ":00");
+        setEndAmPm(endHour >= 12 ? "PM" : "AM");
+      } else {
+        setNewEventStartTime("");
+        setNewEventEndTime("");
+        setStartAmPm("AM");
+        setEndAmPm("AM");
+      }
+      setIsEventModalVisible(true);
+    }
   };
 
   const openEditEventModal = (event: EventItem) => {
@@ -291,6 +312,7 @@ export default function CalendarPage() {
     setStartAmPm("AM");
     setEndAmPm("AM");
     setNewEventOutfit([]);
+    setPendingTimeSelection(null);
   };
 
   const handleAddOutfit = () => {
@@ -510,7 +532,14 @@ export default function CalendarPage() {
         <View style={styles.timeGridContainer}>
           <View style={styles.timeLabelsColumn}>
             {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
-              <View key={`label-${hour}`} style={styles.timeLabelCell}>
+              <Pressable
+                key={`label-${hour}`}
+                style={styles.timeLabelCell}
+                onLongPress={() => {
+                  // Pre-fill the start time for long press
+                  openAddEventModal()({ startHour: hour, endHour: hour + 1 });
+                }}
+              >
                 <Text style={styles.timeLabelText}>
                   {hour === 0
                     ? "12 AM"
@@ -520,14 +549,44 @@ export default function CalendarPage() {
                     ? `${hour - 12} PM`
                     : `${hour} AM`}
                 </Text>
-              </View>
+              </Pressable>
             ))}
           </View>
 
           <View style={styles.eventsColumn}>
-            {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
-              <View key={`line-${hour}`} style={styles.gridLine} />
-            ))}
+            {Array.from({ length: 24 }, (_, hour) => {
+                // Highlight if selected OR pending selection (while modal is open)
+                const highlightRange = pendingTimeSelection
+                  ? [pendingTimeSelection.start, pendingTimeSelection.end]
+                  : selectedStartHour !== null && selectedEndHour !== null
+                    ? [Math.min(selectedStartHour, selectedEndHour), Math.max(selectedStartHour, selectedEndHour)]
+                    : null;
+                const isSelected = highlightRange && hour >= highlightRange[0] && hour <= highlightRange[1];
+                return (
+                  <Pressable
+                    key={`line-${hour}`}
+                    style={[styles.gridLine, isSelected && { backgroundColor: '#F9E3B4' }]}
+                    onPress={() => {
+                      if (selectedStartHour === null) {
+                        setSelectedStartHour(hour);
+                        setSelectedEndHour(null);
+                      } else if (selectedEndHour === null) {
+                        setSelectedEndHour(hour);
+                        // Immediately open modal after selecting range
+                        const startHour = Math.min(selectedStartHour, hour);
+                        const endHour = Math.max(selectedStartHour, hour) + 1;
+                        setPendingTimeSelection({start: startHour, end: endHour - 1});
+                        openAddEventModal()({ startHour, endHour });
+                        setSelectedStartHour(null);
+                        setSelectedEndHour(null);
+                      } else {
+                        setSelectedStartHour(hour);
+                        setSelectedEndHour(null);
+                      }
+                    }}
+                  />
+                );
+            })}
 
             {(() => {
               const eventBlocks = [];
@@ -849,7 +908,7 @@ export default function CalendarPage() {
 
       <TouchableOpacity
         style={styles.floatingAddButton}
-        onPress={openAddEventModal} 
+        onPress={() => openAddEventModal()()} 
       >
         <Ionicons name="add" size={32} color="white" />
       </TouchableOpacity>
